@@ -8,18 +8,15 @@ Usage:
 
 import warnings
 warnings.filterwarnings("ignore")
+
 from pathlib import Path
-import pandas as pd  # <-- Add this line
-import plotly.graph_objects as go
-import streamlit as st
-from pathlib import Path
-import streamlit as st
 import numpy as np
+import pandas as pd
 import xarray as xr
 import plotly.express as px
 import plotly.graph_objects as go
+import streamlit as st
 
-# Set page config
 st.set_page_config(
     page_title="OceanEmbed — 3D Ocean Visualizer",
     page_icon="🌊",
@@ -66,10 +63,8 @@ def main():
         st.info("Run `python predict.py` first to generate the 3D prediction dataset.")
         return
 
-    # Sidebar Controls
     st.sidebar.header("🕹️ Visualization Controls")
 
-    # Time selection
     times = ds["time"].values
     selected_time_idx = st.sidebar.selectbox(
         "Select Date", 
@@ -77,7 +72,6 @@ def main():
         format_func=lambda i: str(times[i])[:10]
     )
 
-    # Depth selection for 2D slice
     depths = ds["depth"].values
     selected_depth = st.sidebar.select_slider(
         "Select Depth Level (m)",
@@ -89,22 +83,18 @@ def main():
     lats = ds["lat"].values
     lons = ds["lon"].values
 
-    # Extract 2D Slice data
     temp_3d = ds["predicted_temperature"].isel(time=selected_time_idx).values
     slice_2d = temp_3d[selected_depth_idx].copy()
 
-    # Mask out land pixels
     land_mask = load_land_mask((len(lats), len(lons)))
     if land_mask is not None:
         slice_2d[land_mask] = np.nan
 
-    # Dashboard Tabs
     tab1, tab2, tab3 = st.tabs(["🗺️ Horizontal Depth Map", "📈 Vertical Profile Explorer", "📊 Key Metrics Summary"])
 
     with tab1:
         st.subheader(f"Horizontal Ocean Temperature Slice at Depth = {depths[selected_depth_idx]:.1f} meters")
 
-        # Optional: Land color picker in the UI
         land_theme = st.radio(
             "Land Style:",
             ["Dark Charcoal", "Warm Earth", "Sand/Tan", "Deep Ocean Dark"],
@@ -128,7 +118,6 @@ def main():
             aspect="auto"
         )
 
-        # Style land background color
         fig_map.update_layout(
             height=500,
             margin=dict(l=20, r=20, t=30, b=20),
@@ -163,7 +152,6 @@ def main():
 
         profile = temp_3d[:, lat_idx, lon_idx]
 
-        # Calculate Thermocline Depth (Max dT/dz gradient)
         dT = np.diff(profile)
         dz = np.diff(depths)
         gradient = dT / dz
@@ -199,20 +187,36 @@ def main():
 
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("Spatial Grid Resolution", "0.25° × 0.25°")
-        m2.metric("Depth Levels Reconstructed", "35 Levels (0-1000m)")
+        m2.metric("Depth Levels Reconstructed", f"{len(depths)} Levels")
         m3.metric("Upper Thermocline RMSE", "< 0.80 °C")
         m4.metric("ARGO Pearson Correlation", "r > 0.92")
 
         st.markdown("---")
 
-        metrics_path = Path("evaluation_metrics.csv")
-        if metrics_path.exists():
-            df_metrics = pd.read_csv(metrics_path)
+        metric_mode = st.radio(
+            "Select Metrics View:",
+            ["15 INCOIS Standard Depths (`evaluation_metrics_15incois.csv`)", 
+             "35 Native GLORYS Depths (`evaluation_metrics.csv`)"],
+            horizontal=True
+        )
+
+        selected_csv = (
+            Path("evaluation_metrics_15incois.csv") 
+            if "15 INCOIS" in metric_mode 
+            else Path("evaluation_metrics.csv")
+        )
+
+        if not selected_csv.exists():
+            selected_csv = Path("evaluation_metrics.csv") if Path("evaluation_metrics.csv").exists() else Path("evaluation_metrics_15incois.csv")
+
+        if selected_csv.exists():
+            df_metrics = pd.read_csv(selected_csv)
+            depth_col = "depth_m" if "depth_m" in df_metrics.columns else "depth_index"
 
             col_table, col_chart = st.columns([1, 1])
 
             with col_table:
-                st.markdown("**Layer-by-Layer Physical Depth Metrics**")
+                st.markdown(f"**Layer-by-Layer Physical Depth Metrics ({selected_csv.name})**")
                 st.dataframe(df_metrics, use_container_width=True, height=450)
 
             with col_chart:
@@ -221,14 +225,14 @@ def main():
                 fig_metrics = go.Figure()
                 fig_metrics.add_trace(go.Scatter(
                     x=df_metrics["rmse"],
-                    y=df_metrics["depth_m"],
+                    y=df_metrics[depth_col],
                     mode="lines+markers",
                     name="RMSE (°C)",
                     line=dict(color="crimson", width=2)
                 ))
                 fig_metrics.add_trace(go.Scatter(
                     x=df_metrics["pearson_r"],
-                    y=df_metrics["depth_m"],
+                    y=df_metrics[depth_col],
                     mode="lines+markers",
                     name="Pearson r",
                     line=dict(color="royalblue", width=2),
@@ -243,6 +247,8 @@ def main():
                     margin=dict(l=20, r=20, t=40, b=20)
                 )
                 st.plotly_chart(fig_metrics, use_container_width=True)
+        else:
+            st.warning("No metrics CSV files found. Run `python evaluate.py` first.")
 
 
 if __name__ == "__main__":
