@@ -52,16 +52,16 @@ class OceanDataset(Dataset):
 
         for var in list(self.ds_inputs.data_vars):
             da = self.ds_inputs[var]
-            
+
             # Drop extra 1D coordinates or non-spatial dimensions
             for dim in list(da.dims):
                 if dim not in ["time", "lat", "lon"] and da.sizes[dim] == 1:
                     da = da.squeeze(dim, drop=True)
-            
+
             # Enforce exact dimension order: (time, lat, lon)
             da = da.transpose("time", "lat", "lon")
             arr = da.values.astype(np.float32)
-            
+
             print(f"  - {var:15s}: shape {arr.shape}")
             processed_input_list.append(arr)
 
@@ -71,16 +71,29 @@ class OceanDataset(Dataset):
         # Process target dataset
         target_var = list(self.ds_target.data_vars)[0]  # thetao
         target_da = self.ds_target[target_var]
-        
+
         # Ensure depth axis remains present: (time, depth, lat, lon)
         if "depth" in target_da.dims:
             target_da = target_da.transpose("time", "depth", "lat", "lon")
-        
+
         self.target_data = target_da.values.astype(np.float32)
 
-        # Create static 2D Ocean Mask (1 for ocean, 0 for land) from first timestep surface layer
+        # --- Static 2D horizontal ocean mask (kept for reference / any
+        # legacy code that still expects a (H, W) mask) ---
         self.ocean_mask = ~np.isnan(self.input_data[0, 0, :, :])
         self.mask_tensor = torch.from_numpy(self.ocean_mask.astype(np.float32))
+
+        # --- FIXED: depth-aware validity mask ---
+        # The old code only ever produced the 2D mask above and broadcast it
+        # uniformly across all 35 depths. Real bathymetry means large parts
+        # of the domain (Arabian Sea / Bay of Bengal shelf, Persian Gulf,
+        # etc.) are ocean at the surface but shallower than many of the
+        # deeper target levels, so GLORYS stores NaN there below the true
+        # seafloor. Those NaNs then got zeroed out by _normalize() and
+        # trained/scored against as if they were real "average temperature"
+        # targets. This mask instead tracks validity per depth, per cell,
+        # directly from the target's own NaN pattern.
+        self.depth_mask = ~np.isnan(self.target_data)  # shape (time, depth, lat, lon)
 
         # Calculate or apply Z-score normalization parameters
         if stats is None:
@@ -90,7 +103,7 @@ class OceanDataset(Dataset):
         else:
             self.stats = stats
 
-        # Normalize data and replace land NaNs with 0.0
+        # Normalize data and replace land/below-seafloor NaNs with 0.0
         self.norm_inputs = self._normalize(
             self.input_data, self.stats["input_mean"], self.stats["input_std"]
         )
@@ -129,13 +142,16 @@ class OceanDataset(Dataset):
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Returns:
-            x: Input surface tensor of shape (C_in, H, W) -> (7, 101, 241)
-            y: Target temperature profile tensor of shape (C_out, H, W) -> (16, 101, 241)
-            mask: Binary ocean mask tensor of shape (H, W) -> (101, 241)
+            x: Input surface tensor of shape (C_in, H, W)
+            y: Target temperature profile tensor of shape (C_out, H, W)
+            mask: Depth-aware validity mask of shape (Depth, H, W) - True only
+                  where GLORYS actually has a real value at that depth/cell,
+                  i.e. excludes below-seafloor shelf regions per depth.
         """
         x = torch.from_numpy(self.norm_inputs[idx])
         y = torch.from_numpy(self.norm_targets[idx])
-        return x, y, self.mask_tensor
+        mask = torch.from_numpy(self.depth_mask[idx].astype(np.float32))
+        return x, y, mask
 
 
 def get_dataloaders(batch_size: int = 8, num_workers: int = 0) -> tuple[DataLoader, DataLoader, DataLoader, dict]:
@@ -163,4 +179,4 @@ if __name__ == "__main__":
     print(f"  Test batches  : {len(test_loader)}")
     print(f"  Input Tensor  : {x_sample.shape}  (Batch, Channels, Lat, Lon)")
     print(f"  Target Tensor : {y_sample.shape} (Batch, Depths, Lat, Lon)")
-    print(f"  Mask Tensor   : {mask_sample.shape}   (Batch, Lat, Lon)")
+    print(f"  Mask Tensor   : {mask_sample.shape}   (Batch, Depths, Lat, Lon) - now depth-aware")
