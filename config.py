@@ -9,16 +9,25 @@ from pathlib import Path
 LON_MIN, LON_MAX = 45.0, 105.0
 LAT_MIN, LAT_MAX = 5.0, 30.0
 
-# ---- Time range (adjust to what you actually want to train on) ----
-# Single-year pilot window. Must match the YEAR in split_data.py -- if you
-# change one, change the other, or the split script will find zero days
-# for every quarter.
+# ---- Time range ----
 START_DATE = "2023-01-01"
 END_DATE = "2023-12-31"
 
 # ---- Target grid / depths ----
 GRID_RESOLUTION_DEG = 0.25
-STANDARD_DEPTHS_M = [0, 5, 10, 20, 30, 50, 75, 100, 125, 150, 200, 300, 500, 700, 1000]
+
+# INCOIS Problem Statement #01 Required Standard Depths (15 levels)
+INCOIS_STANDARD_DEPTHS_M = [0, 5, 10, 20, 30, 50, 75, 100, 125, 150, 200, 300, 500, 700, 1000]
+
+# Native GLORYS Model Depths (35 physical levels used by OceanUNet)
+NATIVE_DEPTHS_35 = [
+    0.494, 1.541, 2.645, 3.819, 5.074, 6.424, 7.879, 9.452, 11.159, 13.014,
+    15.034, 17.230, 19.617, 22.210, 25.025, 28.080, 31.397, 34.996, 38.902, 43.140,
+    47.733, 52.707, 58.092, 63.920, 70.225, 77.045, 84.417, 92.381, 101.000, 110.330,
+    120.440, 131.400, 143.280, 156.160, 902.300
+]
+
+STANDARD_DEPTHS_M = INCOIS_STANDARD_DEPTHS_M
 
 # ---- Local storage layout ----
 DATA_ROOT = Path("./data")
@@ -36,30 +45,17 @@ SUBDIRS = {
 }
 
 # ---- Copernicus Marine dataset IDs ----
-# NOTE: verified against https://data.marine.copernicus.eu catalog
-"""CMEMS_DATASETS = {
-    "sst": "METOFFICE-GLO-SST-L4-REP-OBS-SST",                  # OSTIA historical daily L4 SST
-    "sss": "cmems_obs-mob_glo_phy-sal_my_multi-oi_P7D-c",         # SMOS/SMAP L4 multi-obs salinity
-    "ssh": "cmems_obs-sl_glo_phy-ssh_my_allsat-l4-duacs-0.125deg_P1D", # DUACS L4 reprocessed SSH
-    "glorys": "cmems_mod_glo_phy_my_0.083deg_P1D-m",           # GLORYS12V1 daily ocean reanalysis
-}"""
-# ---- Copernicus Marine dataset IDs ----
 CMEMS_DATASETS = {
     "sst": "METOFFICE-GLO-SST-L4-REP-OBS-SST",
-    "sss": "cmems_obs-mob_glo_phy-sss_my_multi_P1D",                   # Daily L4 SSS (contains variable 'sos')
-    "ssh": "cmems_obs-sl_glo_phy-ssh_my_allsat-l4-duacs-0.125deg_P1D", # Daily SSH
-    "glorys": "cmems_mod_glo_phy_my_0.083deg_P1D-m",                  # Daily reanalysis
+    "sss": "cmems_obs-mob_glo_phy-sss_my_multi_P1D",
+    "ssh": "cmems_obs-sl_glo_phy-ssh_my_allsat-l4-duacs-0.125deg_P1D",
+    "glorys": "cmems_mod_glo_phy_my_0.083deg_P1D-m",
 }
 
-# ---- PO.DAAC short_names (used with earthaccess) ----
-"""PODAAC_DATASETS = {
-    "currents": "OSCAR_L4_OC_FINAL_V2.0",
-    "winds": "CMP_WINDS_10M6HR_L4_V3.1",
-}"""
-# ---- PO.DAAC short_names (used with earthaccess) ----
+# ---- PO.DAAC short_names ----
 PODAAC_DATASETS = {
     "currents": "OSCAR_L4_OC_FINAL_V2.0",
-    "winds": "CCMP_WINDS_10M6HR_L4_V3.1",  # Fixed missing 'C' prefix
+    "winds": "CCMP_WINDS_10M6HR_L4_V3.1",
 }
 
 for d in SUBDIRS.values():
