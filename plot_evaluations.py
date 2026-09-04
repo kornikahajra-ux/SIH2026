@@ -1,7 +1,7 @@
 """
 Plotting and Visualization Script for OceanEmbed.
 Generates:
-1. Vertical metric profiles (RMSE, MAE, Pearson R) across depth levels -> metrics_vs_depth.png
+1. Vertical metric profiles (RMSE, MAE, Pearson R) across physical depth (m) -> metrics_vs_depth.png
 2. Spatial comparison slices (Target vs Prediction vs Absolute Error) -> spatial_evaluations.png
 
 Usage:
@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
+import xarray as xr
 
 from dataset import get_dataloaders
 from model import OceanUNet
@@ -30,30 +31,42 @@ def plot_vertical_metrics():
 
     df = pd.read_csv(csv_path)
 
+    # Automatically attach physical depth (m) if missing
+    if "depth_m" not in df.columns:
+        nc_path = Path("predicted_subsurface_temp.nc")
+        if nc_path.exists():
+            ds = xr.open_dataset(nc_path)
+            df.insert(1, "depth_m", ds["depth"].values)
+            df.to_csv(csv_path, index=False)
+        else:
+            df["depth_m"] = df["depth_index"]
+
+    y_depth = df["depth_m"]
+
     fig, axes = plt.subplots(1, 3, figsize=(15, 6), sharey=True)
 
     # Plot RMSE
-    axes[0].plot(df["rmse"], df["depth_index"], marker="o", color="crimson", linewidth=2)
+    axes[0].plot(df["rmse"], y_depth, marker="o", color="crimson", linewidth=2)
     axes[0].set_title("RMSE (°C)", fontsize=12, fontweight="bold")
     axes[0].set_xlabel("Root Mean Squared Error")
-    axes[0].set_ylabel("Depth Level Index (0 = Surface)")
+    axes[0].set_ylabel("Depth (meters)", fontsize=11, fontweight="bold")
     axes[0].invert_yaxis()
     axes[0].grid(True, linestyle="--", alpha=0.6)
 
     # Plot MAE
-    axes[1].plot(df["mae"], df["depth_index"], marker="s", color="darkorange", linewidth=2)
+    axes[1].plot(df["mae"], y_depth, marker="s", color="darkorange", linewidth=2)
     axes[1].set_title("MAE (°C)", fontsize=12, fontweight="bold")
     axes[1].set_xlabel("Mean Absolute Error")
     axes[1].grid(True, linestyle="--", alpha=0.6)
 
     # Plot Pearson R
-    axes[2].plot(df["pearson_r"], df["depth_index"], marker="^", color="teal", linewidth=2)
+    axes[2].plot(df["pearson_r"], y_depth, marker="^", color="teal", linewidth=2)
     axes[2].set_title("Pearson Correlation (r)", fontsize=12, fontweight="bold")
     axes[2].set_xlabel("Correlation Coefficient")
     axes[2].set_xlim(-0.1, 1.0)
     axes[2].grid(True, linestyle="--", alpha=0.6)
 
-    plt.suptitle("OceanEmbed: Subsurface Temperature Performance vs. Depth", fontsize=14, fontweight="bold")
+    plt.suptitle("OceanEmbed: Subsurface Temperature Performance vs. Depth (m)", fontsize=14, fontweight="bold")
     plt.tight_layout()
 
     out_img = Path("metrics_vs_depth.png")
@@ -90,7 +103,6 @@ def plot_spatial_slices():
         t_mean = np.squeeze(stats["target_mean"])
         t_std = np.squeeze(stats["target_std"])
         
-        # Ensure proper shape expansion for broadcast across spatial dimensions
         if t_mean.ndim == 1:
             t_mean = t_mean[:, None, None]
             t_std = t_std[:, None, None]
@@ -104,31 +116,40 @@ def plot_spatial_slices():
         pred[d][land_mask] = np.nan
         target[d][land_mask] = np.nan
 
+    # Get depth values in meters for subfigure titles
+    depth_m_vals = None
+    nc_path = Path("predicted_subsurface_temp.nc")
+    if nc_path.exists():
+        ds_nc = xr.open_dataset(nc_path)
+        depth_m_vals = ds_nc["depth"].values
+
     # Select representative depth layers: Surface (0), Thermocline (~100m, idx 10), Deep (~500m, idx 20)
     depth_indices = [0, 10, 20]
     fig, axes = plt.subplots(len(depth_indices), 3, figsize=(15, 10))
 
     for row_idx, d_idx in enumerate(depth_indices):
-        t_slice = target[d_idx]        # Guaranteed 2D shape: (101, 241)
-        p_slice = pred[d_idx]          # Guaranteed 2D shape: (101, 241)
+        t_slice = target[d_idx]
+        p_slice = pred[d_idx]
         err_slice = np.abs(p_slice - t_slice)
 
         v_min = np.nanmin(t_slice)
         v_max = np.nanmax(t_slice)
 
+        depth_label = f"{depth_m_vals[d_idx]:.1f}m" if depth_m_vals is not None else f"Level {d_idx}"
+
         # Ground Truth Target
         im0 = axes[row_idx, 0].imshow(t_slice, cmap="viridis", vmin=v_min, vmax=v_max, origin="lower")
-        axes[row_idx, 0].set_title(f"Target Temp (°C) [Depth Level {d_idx}]")
+        axes[row_idx, 0].set_title(f"Target Temp (°C) [{depth_label}]")
         plt.colorbar(im0, ax=axes[row_idx, 0], fraction=0.046, pad=0.04)
 
         # Model Prediction
         im1 = axes[row_idx, 1].imshow(p_slice, cmap="viridis", vmin=v_min, vmax=v_max, origin="lower")
-        axes[row_idx, 1].set_title(f"Predicted Temp (°C) [Depth Level {d_idx}]")
+        axes[row_idx, 1].set_title(f"Predicted Temp (°C) [{depth_label}]")
         plt.colorbar(im1, ax=axes[row_idx, 1], fraction=0.046, pad=0.04)
 
         # Absolute Error
         im2 = axes[row_idx, 2].imshow(err_slice, cmap="Reds", origin="lower")
-        axes[row_idx, 2].set_title(f"Absolute Error (°C) [Depth Level {d_idx}]")
+        axes[row_idx, 2].set_title(f"Absolute Error (°C) [{depth_label}]")
         plt.colorbar(im2, ax=axes[row_idx, 2], fraction=0.046, pad=0.04)
 
         for col_idx in range(3):
