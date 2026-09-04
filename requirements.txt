@@ -1,0 +1,7 @@
+copernicusmarine
+earthaccess
+argopy
+xarray
+xesmf
+netCDF4
+numpy
