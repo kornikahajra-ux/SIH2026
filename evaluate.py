@@ -18,12 +18,16 @@ from scipy.interpolate import interp1d
 
 from dataset import get_dataloaders
 from model import OceanUNet
-from config import NATIVE_DEPTHS_35, INCOIS_STANDARD_DEPTHS_M
+from config import NATIVE_DEPTHS_35, INCOIS_STANDARD_DEPTHS_M, verify_native_depths
 
 
 def evaluate_model():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device for evaluation: {device}")
+
+    # --- FIXED: sanity-check the depth labels before trusting anything
+    # computed against them (see config.py for the bug this catches).
+    verify_native_depths()
 
     checkpoint_path = Path("checkpoints/best_ocean_unet.pth")
     if not checkpoint_path.exists():
@@ -59,14 +63,31 @@ def evaluate_model():
         preds_arr = preds_arr * t_std + t_mean
         targets_arr = targets_arr * t_std + t_mean
 
-    masks_expanded = np.repeat(np.expand_dims(masks_arr, axis=1), 35, axis=1) == 1.0
+    n_depths = len(NATIVE_DEPTHS_35)
 
-    print("\nCalculating metrics across 35 native GLORYS depth levels...")
+    # --- FIXED: masks_arr should now be depth-aware, shape (N, Depth, H, W),
+    # coming from dataset.py's per-depth target NaN mask. This replaces the
+    # old behavior of expanding a single 2D land/ocean mask uniformly across
+    # all 35 depths, which silently scored below-seafloor shelf cells
+    # against a fabricated 0.0 "temperature".
+    if masks_arr.ndim == 3:
+        print(
+            "[evaluate.py] WARNING: received a 2D mask (B, H, W) - this file was still "
+            "loaded with the old dataset.py. Update dataset.py to emit the depth-aware "
+            "mask described in config.py's changelog for correct shelf-region metrics. "
+            "Falling back to legacy uniform expansion for now."
+        )
+        masks_expanded = np.repeat(np.expand_dims(masks_arr, axis=1), n_depths, axis=1) == 1.0
+    else:
+        masks_expanded = masks_arr == 1.0
+
+    print(f"\nCalculating metrics across {n_depths} native GLORYS depth levels...")
     metrics_per_depth = []
 
-    for depth_idx in range(35):
-        p_depth = preds_arr[:, depth_idx, :, :][masks_expanded[:, depth_idx, :, :]]
-        t_depth = targets_arr[:, depth_idx, :, :][masks_expanded[:, depth_idx, :, :]]
+    for depth_idx in range(n_depths):
+        valid = masks_expanded[:, depth_idx, :, :]
+        p_depth = preds_arr[:, depth_idx, :, :][valid]
+        t_depth = targets_arr[:, depth_idx, :, :][valid]
 
         if len(t_depth) == 0:
             continue
@@ -79,35 +100,74 @@ def evaluate_model():
         metrics_per_depth.append({
             "depth_index": depth_idx,
             "depth_m": NATIVE_DEPTHS_35[depth_idx],
+            "n_valid_cells": int(valid.sum()),
             "rmse": rmse,
             "mae": mae,
             "bias": bias,
-            "pearson_r": corr
+            "pearson_r": corr,
         })
 
     df_metrics = pd.DataFrame(metrics_per_depth)
     out_csv = Path("evaluation_metrics.csv")
     df_metrics.to_csv(out_csv, index=False)
 
-    # Calculate 15 INCOIS Standard Depth metrics via vertical 1D interpolation
-    interp_preds = interp1d(NATIVE_DEPTHS_35, preds_arr, axis=1, bounds_error=False, fill_value="extrapolate")(INCOIS_STANDARD_DEPTHS_M)
-    interp_targets = interp1d(NATIVE_DEPTHS_35, targets_arr, axis=1, bounds_error=False, fill_value="extrapolate")(INCOIS_STANDARD_DEPTHS_M)
-    masks_15 = np.repeat(np.expand_dims(masks_arr, axis=1), 15, axis=1) == 1.0
+    # --- Vertical interpolation to 15 INCOIS standard depths ---
+    max_native_depth = max(NATIVE_DEPTHS_35)
+
+    interp_preds = interp1d(
+        NATIVE_DEPTHS_35, preds_arr, axis=1, bounds_error=False, fill_value="extrapolate"
+    )(INCOIS_STANDARD_DEPTHS_M)
+    interp_targets = interp1d(
+        NATIVE_DEPTHS_35, targets_arr, axis=1, bounds_error=False, fill_value="extrapolate"
+    )(INCOIS_STANDARD_DEPTHS_M)
+
+    # --- FIXED: carry the validity mask into the interpolated grid using
+    # nearest-neighbor lookup instead of letting it silently pass through
+    # interp1d as floating-point 0/1 values, which could partially "unmask"
+    # invalid cells near the interpolation boundary.
+    #
+    # IMPORTANT: fill_value must be "extrapolate", not 0.0. kind="nearest"
+    # only governs behavior *inside* [min(NATIVE_DEPTHS_35), max(NATIVE_DEPTHS_35)].
+    # Any INCOIS depth outside that range (e.g. 0m if native starts below the
+    # surface, or 1000m if it's beyond the deepest native level) hit
+    # bounds_error=False and got force-set to fill_value=0.0 for every cell,
+    # i.e. marked entirely invalid. That silently zeroed out valid.sum() at
+    # those depths, so `if len(t_d) == 0: continue` below dropped the row
+    # before the extrapolation warning could even apply. With
+    # fill_value="extrapolate", out-of-range depths inherit the nearest
+    # in-range native depth's mask, consistent with how interp_preds /
+    # interp_targets already extrapolate the actual values.
+    interp_masks = interp1d(
+        NATIVE_DEPTHS_35, masks_expanded.astype(float), axis=1,
+        kind="nearest", bounds_error=False, fill_value="extrapolate",
+    )(INCOIS_STANDARD_DEPTHS_M) >= 0.5
 
     incois_metrics = []
     for idx, d_m in enumerate(INCOIS_STANDARD_DEPTHS_M):
-        p_d = interp_preds[:, idx, :, :][masks_15[:, idx, :, :]]
-        t_d = interp_targets[:, idx, :, :][masks_15[:, idx, :, :]]
+        valid = interp_masks[:, idx, :, :]
+        p_d = interp_preds[:, idx, :, :][valid]
+        t_d = interp_targets[:, idx, :, :][valid]
         if len(t_d) == 0:
             continue
+
+        extrapolated = d_m > max_native_depth
+        if extrapolated:
+            print(
+                f"[evaluate.py] NOTE: {d_m}m is beyond the deepest native depth "
+                f"({max_native_depth:.1f}m) - this row is extrapolated, not measured. Treat with caution."
+            )
+
         incois_metrics.append({
             "depth_index": idx,
             "depth_m": d_m,
+            "extrapolated": extrapolated,
+            "n_valid_cells": int(valid.sum()),
             "rmse": np.sqrt(np.mean((p_d - t_d) ** 2)),
             "mae": np.mean(np.abs(p_d - t_d)),
             "bias": np.mean(p_d - t_d),
-            "pearson_r": np.corrcoef(p_d, t_d)[0, 1] if np.std(p_d) > 0 and np.std(t_d) > 0 else 0.0
+            "pearson_r": np.corrcoef(p_d, t_d)[0, 1] if np.std(p_d) > 0 and np.std(t_d) > 0 else 0.0,
         })
+
     pd.DataFrame(incois_metrics).to_csv("evaluation_metrics_15incois.csv", index=False)
 
     print("\n================ Evaluation Summary ================")
