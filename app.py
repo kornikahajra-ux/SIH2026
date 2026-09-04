@@ -17,6 +17,9 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
+# Anchor all file resolution to the directory where app.py resides
+BASE_DIR = Path(__file__).parent
+
 st.set_page_config(
     page_title="OceanEmbed — 3D Ocean Visualizer",
     page_icon="🌊",
@@ -26,7 +29,7 @@ st.set_page_config(
 
 @st.cache_data
 def load_predictions():
-    pred_path = Path("predicted_subsurface_temp.nc")
+    pred_path = BASE_DIR / "predicted_subsurface_temp.nc"
     if not pred_path.exists():
         return None
     return xr.open_dataset(pred_path)
@@ -36,8 +39,8 @@ def load_predictions():
 def load_land_mask(target_shape):
     """Loads surface input file to identify original land NaN positions."""
     possible_paths = [
-        Path("data/processed/surface_inputs_test.nc"),
-        Path("surface_inputs_test.nc")
+        BASE_DIR / "data" / "processed" / "surface_inputs_test.nc",
+        BASE_DIR / "surface_inputs_test.nc"
     ]
     for p in possible_paths:
         if p.exists():
@@ -59,7 +62,7 @@ def main():
     ds = load_predictions()
 
     if ds is None:
-        st.warning("⚠️ Prediction file `predicted_subsurface_temp.nc` not found.")
+        st.warning(f"⚠️ Prediction file `predicted_subsurface_temp.nc` not found at `{BASE_DIR}`.")
         st.info("Run `python predict.py` first to generate the 3D prediction dataset.")
         return
 
@@ -200,23 +203,21 @@ def main():
             horizontal=True
         )
 
-        selected_csv = (
-            Path("evaluation_metrics_15incois.csv") 
+        target_file = (
+            "evaluation_metrics_15incois.csv" 
             if "15 INCOIS" in metric_mode 
-            else Path("evaluation_metrics.csv")
+            else "evaluation_metrics.csv"
         )
-
-        if not selected_csv.exists():
-            selected_csv = Path("evaluation_metrics.csv") if Path("evaluation_metrics.csv").exists() else Path("evaluation_metrics_15incois.csv")
+        selected_csv = BASE_DIR / target_file
 
         if selected_csv.exists():
             df_metrics = pd.read_csv(selected_csv)
-            depth_col = "depth_m" if "depth_m" in df_metrics.columns else "depth_index"
+            depth_col = "depth_m" if "depth_m" in df_metrics.columns else df_metrics.columns[0]
 
             col_table, col_chart = st.columns([1, 1])
 
             with col_table:
-                st.markdown(f"**Layer-by-Layer Physical Depth Metrics ({selected_csv.name})**")
+                st.markdown(f"**Layer-by-Layer Physical Depth Metrics (`{selected_csv.name}`)**")
                 st.dataframe(df_metrics, use_container_width=True, height=450)
 
             with col_chart:
@@ -248,7 +249,8 @@ def main():
                 )
                 st.plotly_chart(fig_metrics, use_container_width=True)
         else:
-            st.warning("No metrics CSV files found. Run `python evaluate.py` first.")
+            st.error(f"❌ File not found at path: `{selected_csv.resolve()}`")
+            st.info("Run `python evaluate.py` to generate evaluation metric CSVs.")
 
 
 if __name__ == "__main__":
