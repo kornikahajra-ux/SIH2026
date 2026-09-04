@@ -104,30 +104,37 @@ def plot_spatial_slices():
         pred = model(x.to(device)).cpu().numpy().squeeze()
 
     target = y.numpy().squeeze()
-    mask_2d = mask.numpy().squeeze()
+    mask_arr = mask.numpy().squeeze()
 
     # Un-normalize targets and predictions if normalization stats exist
     if "target_mean" in stats and "target_std" in stats:
         t_mean = np.squeeze(stats["target_mean"])
         t_std = np.squeeze(stats["target_std"])
-        
+
         if t_mean.ndim == 1:
             t_mean = t_mean[:, None, None]
             t_std = t_std[:, None, None]
-            
+
         pred = pred * t_std + t_mean
         target = target * t_std + t_mean
 
-    # Mask land cells with NaN across all 35 depth levels
-    land_mask = (mask_2d == 0)
+    # The mask can be a single 2D land/sea mask (H, W), reused for every depth
+    # level, or a depth-aware mask (35, H, W) where validity varies per level
+    # (e.g. a shelf cell that's ocean at the surface but below the seafloor
+    # at 100m). Handle both so a single 2D land mask isn't silently misapplied
+    # as a 3D boolean index (and vice versa).
+    depth_varying_mask = (mask_arr.ndim == 3)
+
+    # Mask land / below-seafloor cells with NaN across all 35 depth levels
     for d in range(35):
-        pred[d][land_mask] = np.nan
-        target[d][land_mask] = np.nan
+        land_mask_d = (mask_arr[d] == 0) if depth_varying_mask else (mask_arr == 0)
+        pred[d][land_mask_d] = np.nan
+        target[d][land_mask_d] = np.nan
 
     # Target specific physical depths (~0m, ~100m, ~150m/500m) in 35 native levels
     target_depths_m = [0.0, 100.0, 150.0]
     depth_indices = [
-        int(np.argmin(np.abs(np.array(NATIVE_DEPTHS_35) - td))) 
+        int(np.argmin(np.abs(np.array(NATIVE_DEPTHS_35) - td)))
         for td in target_depths_m
     ]
 
