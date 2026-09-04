@@ -1,17 +1,17 @@
 # 🌊 OceanEmbed: 3D Ocean Subsurface Temperature Reconstruction
 
-**OceanEmbed** is a deep learning framework designed to reconstruct 3D ocean subsurface temperature profiles (0.5m down to 902.3m across 35 discrete depth levels) directly from 12 multi-modal satellite surface observation channels. Built with PyTorch and integrated into an interactive Streamlit dashboard, OceanEmbed bridges satellite altimetry, thermometry, and surface dynamics with subsurface oceanography.
+**OceanEmbed** is a deep learning framework designed to reconstruct 3D ocean subsurface temperature profiles (0.5m down to 902.3m across 35 discrete native depth levels, or vertically interpolated to the 15 INCOIS standard depths) directly from 12 multi-modal satellite surface observation channels. Built with PyTorch and integrated into an interactive Streamlit dashboard, OceanEmbed bridges satellite altimetry, thermometry, and surface dynamics with subsurface oceanography.
 
 ---
 
 ## 📌 Key Features
 
 - **Multi-Modal Satellite Synthesis**: Leverages 12 distinct sea-surface channels (thermal, salinity, height anomaly, geostrophic currents, surface currents, wind vectors, and data density flags).
-- **3D Subsurface Reconstruction**: Simultaneously predicts 35 non-linear vertical ocean depth temperature layers (0.5m to 902.3m).
-- **`OceanUNet` Architecture**: Custom multi-scale encoder-decoder CNN designed specifically for continuous spatial fields and vertical profile predictions.
-- **Interactive Web Dashboard**: Streamlit-based web interface featuring interactive 3D depth slice sliders, cross-sectional temperature transects, performance metrics, and ARGO float validation.
+- **3D Subsurface Reconstruction**: Predicts 35 non-linear vertical ocean depth temperature layers (0.5m to 902.3m) natively, with support for 15 INCOIS standard depth benchmark mapping.
+- **`OceanUNet` Architecture**: Multi-scale encoder-decoder CNN designed specifically for continuous spatial fields, residual skip connections, and vertical profile predictions.
+- **Dual Depth Pipeline**: Supports evaluation and prediction across both 35 Native GLORYS Depth Levels and 15 INCOIS Standard Benchmark Depths via command-line flags.
+- **Interactive Web Dashboard**: Streamlit interface featuring interactive 3D depth slice sliders, thermocline gradient estimations, cross-sectional temperature transects, dual-metric visualization, and customizable land-masking themes.
 - **In-Situ ARGO Validation**: Direct comparison and validation routines against independent in-situ ARGO float profiles.
-- **Physical Coordinate Mapping**: Native tracking and visualization using physical units (meters for depth, °C for temperature, m/s for velocity).
 
 ---
 
@@ -31,27 +31,27 @@
                                       │ Shape: (Batch, 35, Lat, Lon)
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                35 Subsurface Depth Temperature Layers                    │
-│               Physical Depth Grid: 0.5m ───► 902.3m                      │
+│                Subsurface Depth Temperature Mapping                      │
+│      Native 35 Depths (0.5m - 902.3m) OR 15 INCOIS Benchmark Levels      │
 └────────────────────────────────────┬────────────────────────────────────┘
                                       │
                   ┌───────────────────┴───────────────────┐
                   ▼                                       ▼
 ┌───────────────────────────────────┐     ┌───────────────────────────────┐
-│    Interactive Dashboard (app.py) │     │  Performance & Static          │
-│  - Spatial 2D Maps (Plotly)       │     │  Evaluation Visuals            │
-│  - Vertical Transect Views        │     │   - metrics_vs_depth.png       │
-│  - ARGO Float Comparisons         │     │   - spatial_evaluations.png    │
+│    Interactive Dashboard (app.py) │     │  Performance & Static Visuals  │
+│ - Depth Map Slices (Plotly)       │     │   - metrics_vs_depth.png       │
+│ - Vertical Profile Explorer       │     │   - spatial_evaluations.png    │
+│ - Dual Metric Selection (15 vs 35)│     │   - evaluation_metrics*.csv    │
 └───────────────────────────────────┘     └───────────────────────────────┘
 ```
 
 ---
 
-## 📡 Input Channel Specification (12 Surface Features)
+## 📡 Input Channel Specification
 
-The `OceanUNet` encoder takes a 12-channel surface feature tensor `(B, 12, H, W)` defined as follows:
+The `OceanUNet` encoder processes a 12-channel surface feature tensor `(B, 12, H, W)`:
 
-| Channel Index | Variable | Description | Physical Unit |
+| Channel | Variable | Description | Unit |
 | :---: | :--- | :--- | :---: |
 | **0** | `SST` | Sea Surface Temperature | °C |
 | **1** | `SSS` | Sea Surface Salinity | PSU |
@@ -64,127 +64,109 @@ The `OceanUNet` encoder takes a 12-channel surface feature tensor `(B, 12, H, W)
 | **8** | `u_wnd` | Zonal Surface Wind Speed | m/s |
 | **9** | `v_wnd` | Meridional Surface Wind Speed | m/s |
 | **10** | `ws` | Total Surface Wind Speed Magnitude | m/s |
-| **11** | `n_obs` | Observation Count / Quality Density Flag | Count |
+| **11** | `n_obs` | Observation Count / Data Density Flag | Count |
 
 ---
 
-## 📁 Repository Structure & File Overview
+## 📁 Repository Structure
 
 ```
 SIH_OCEANEMBEDD/
 ├── checkpoints/
 │   └── best_ocean_unet.pth          # Trained OceanUNet PyTorch weights & stats
-├── data/                            # Raw and preprocessed input data files
-├── venv/                            # Project virtual environment
-├── app.py                           # Streamlit interactive web dashboard
+├── data/                            # Processed NetCDF inputs and split files
+├── app.py                           # Interactive Streamlit dashboard
 ├── model.py                         # PyTorch OceanUNet network definition
-├── dataset.py                       # Data loading, normalization & PyTorch DataLoaders
-├── evaluate.py                      # Quantitative evaluation script (computes RMSE, MAE, Pearson r)
-├── predict.py                       # Inference script outputting NetCDF predictions
-├── plot_evaluations.py              # Script generating depth profile & spatial evaluation plots
-├── plot_data.py                     # Data visualization utilities
-├── inspect_data.py                  # Dataset inspection & structural analysis
-├── load_data.py                     # Raw dataset loader utilities
+├── dataset.py                       # PyTorch DataLoaders, normalization & land masking
+├── evaluate.py                      # Multi-depth metric evaluation script
+├── predict.py                       # 3D inference script (Native vs INCOIS modes)
+├── plot_evaluations.py              # Publication figure generator (metrics & spatial slices)
 ├── collect_argo.py                  # In-situ ARGO float data collector
-├── collect_cmems.py                 # Copernicus CMEMS satellite data fetcher
-├── collect_podaac.py                # NASA PO.DAAC data fetcher
-├── validate_argo.py                 # Validation routine comparing model predictions vs ARGO profiles
-├── test.py                          # Utility script attaching depth_m coordinates to metrics
-├── config.py                        # Project hyperparameters, grid parameters, and paths
-├── evaluation_metrics.csv           # Layer-by-layer evaluation metrics with physical depth (depth_m)
-├── INPUT_CHANNELS.md                # Detailed specification of input surface tensor channels
-├── PROJECT_CONTEXT.md               # Context documentation and system specs
-├── README.md                        # Primary project documentation
-└── requirements.txt                 # Python dependency requirements list
+├── validate_argo.py                 # ARGO float validation routines
+├── config.py                        # Hyperparameters, depth grids, and spatial bounds
+├── evaluation_metrics.csv           # Performance metrics across 35 Native GLORYS depths
+├── evaluation_metrics_15incois.csv  # Performance metrics across 15 INCOIS benchmark depths
+├── metrics_vs_depth.png             # Vertical metric profile output figure
+├── spatial_evaluations.png          # Spatial slice comparison output figure
+└── requirements.txt                 # Python dependency configuration
 ```
-
-### Detailed Script Descriptions
-
-- **`app.py`**: Main application interface built with Streamlit and Plotly. Features 3 core tabs:
-  1. *Subsurface Temperature Explorer*: Interactive 2D spatial map sliders for depth selection and vertical transect depth profile lines.
-  2. *ARGO Validation*: In-situ ARGO float profile comparison vs model predictions.
-  3. *Architecture & Metrics*: Model overview cards, layer-by-layer metrics table, and error/correlation profile charts.
-- **`model.py`**: Defines `OceanUNet`, a custom PyTorch convolutional UNet architecture (`in_channels=12`, `out_channels=35`) utilizing double-convolution blocks, max-pooling encoders, transposed convolution decoders, and residual skip connections.
-- **`dataset.py`**: Manages dataset loading from NetCDF/NumPy formats, feature normalization (mean/std), land-mask handling, and PyTorch `DataLoader` generation for training, validation, and testing splits.
-- **`evaluate.py`**: Evaluates model performance across all test samples and depth levels, calculating Layer-wise Root Mean Squared Error (RMSE), Mean Absolute Error (MAE), Bias, and Pearson Correlation Coefficients (r), saving results to `evaluation_metrics.csv`.
-- **`predict.py`**: Executes inference over input domains and exports predicted 3D temperature fields into structured NetCDF files (`predicted_subsurface_temp.nc`).
-- **`plot_evaluations.py`**: Automates generation of publication-quality static figures:
-  - `metrics_vs_depth.png`: RMSE, MAE, and Pearson r plotted against physical depth (meters).
-  - `spatial_evaluations.png`: Spatial target vs prediction vs absolute error slices across Surface, Thermocline, and Deep layers.
-- **`validate_argo.py`**: Fetches and aligns real-world ARGO float profiles with model coordinate predictions for independent validation.
 
 ---
 
-## 🚀 Getting Started
+## 📊 Evaluation & Validation Metrics
 
-### 1. Prerequisites & Environment Setup
+Model performance is evaluated vertically across ocean layers using Root Mean Squared Error (RMSE), Mean Absolute Error (MAE), Bias, and Pearson Correlation (r).
 
-Ensure Python 3.10+ is installed. Clone the repository and set up the virtual environment:
+### ARGO Pearson Correlation (r)
 
-```bash
-# Navigate to project directory
-cd SIH_OCEANEMBEDD
+The Pearson correlation coefficient quantifies structural alignment and shape reconstruction between predicted temperature profiles and observed in-situ ARGO profiles across depth levels:
 
-# Activate virtual environment
-# On Windows (Git Bash):
-source venv/Scripts/activate
-# On Linux/macOS:
-source venv/bin/activate
-
-# Install required dependencies
-pip install -r requirements.txt
+```
+        Σ (Pᵢ − P̄)(Oᵢ − Ō)
+r = ────────────────────────────
+     √Σ(Pᵢ − P̄)²  √Σ(Oᵢ − Ō)²
 ```
 
-**Note on Dependencies**: If non-fatal `argopy` or `erddapy` import warnings appear in your terminal during execution, you can suppress or resolve them by updating erddapy:
+Where `Pᵢ` is the predicted temperature at depth step `i`, `Oᵢ` is the observed ground-truth temperature, and `P̄`, `Ō` represent layer mean values. An overall score of **r > 0.92** confirms accurate thermocline gradient slope tracking.
 
-```bash
-pip install "erddapy<2.0.0"
-```
+---
 
-### 2. Running the Pipeline
+## 🚀 Pipeline Execution Order
 
-**Run Quantitative Evaluation**
+Execute scripts in exact numerical sequence to populate evaluation CSVs, generate NetCDF prediction files, produce static figures, and run the UI dashboard.
 
-Calculate performance metrics across all 35 ocean depth levels:
+### Step 1: Run Quantitative Evaluation
+
+Calculates metrics across both 35 Native GLORYS levels and 15 INCOIS standard depths:
 
 ```bash
 python evaluate.py
 ```
 
-This generates `evaluation_metrics.csv` containing `depth_index`, `depth_m`, `rmse`, `mae`, `bias`, and `pearson_r`.
+Outputs generated: `evaluation_metrics.csv` and `evaluation_metrics_15incois.csv`.
 
-**Generate Static Evaluation Visuals**
+### Step 2: Generate 3D Subsurface Predictions
 
-Produce high-resolution evaluation figures for reports or presentations:
+Run inference to output vertical predictions. By default, `--mode incois` interpolates predictions to the 15 standard INCOIS depths:
+
+```bash
+python predict.py --mode incois
+```
+
+(Optional: Run `python predict.py --mode native` to output raw 35-depth physical layers.)
+
+Output generated: `predicted_subsurface_temp.nc`.
+
+### Step 3: Produce Evaluation Plots
+
+Automates static visual rendering of error curves and spatial slices:
 
 ```bash
 python plot_evaluations.py
 ```
 
-Outputs saved:
-- `metrics_vs_depth.png`
-- `spatial_evaluations.png`
+Outputs generated: `metrics_vs_depth.png` and `spatial_evaluations.png`.
 
-**Launch Interactive Streamlit Dashboard**
+### Step 4: Launch Interactive Streamlit Dashboard
 
-Start the local dashboard server:
+Launch the web interface for 3D exploration and metric toggle views:
 
 ```bash
 streamlit run app.py
 ```
 
-Open your browser at `http://localhost:8501` to explore interactive subsurface ocean predictions.
+Open local browser at `http://localhost:8501`.
 
 ---
 
 ## 📈 Model Performance Highlights
 
-- **Upper Ocean / Surface Layer (0-100m)**: High accuracy with RMSE < 0.80°C and Pearson r > 0.92.
-- **Thermocline Region (100-300m)**: Captures complex steep thermal gradients effectively.
-- **Deep Ocean (300-900m+)**: Maintains strong performance stability with minimal absolute error as temperature variance decreases with depth.
+- **Upper Ocean / Surface Layer (0–100m)**: High profile fidelity with RMSE < 0.80°C and Pearson correlation r > 0.92.
+- **Thermocline Region (100–300m)**: Accurately detects maximum temperature gradient change (dT/dz) and tracks steep vertical stratification.
+- **Deep Ocean (300–900m+)**: Low absolute error variance, maintaining structural stability in deep water masses.
 
 ---
 
-## 📜 License & Acknowledgments
+## 📜 Acknowledgments
 
-Developed for the Smart India Hackathon (SIH). Data sources include Copernicus Marine Environment Monitoring Service (CMEMS), NASA PO.DAAC, and the International ARGO Program.
+Developed for the Smart India Hackathon (SIH). Operational dataset integration includes Copernicus Marine Environment Monitoring Service (CMEMS), NASA PO.DAAC, and the International ARGO Program.
