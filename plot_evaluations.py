@@ -9,35 +9,42 @@ Usage:
 """
 
 import warnings
-warnings.filterwarnings("ignore")  # Suppress argopy/erddapy import warnings
+warnings.filterwarnings("ignore")
 
 from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
-import xarray as xr
 
 from dataset import get_dataloaders
 from model import OceanUNet
+from config import NATIVE_DEPTHS_35, INCOIS_STANDARD_DEPTHS_M
 
 
 def plot_vertical_metrics():
-    csv_path = Path("evaluation_metrics.csv")
-    if not csv_path.exists():
-        print(f"[!] {csv_path} not found. Running evaluation to generate metrics...")
+    # Prefer 15 INCOIS benchmark metrics, fall back to native metrics
+    csv_15 = Path("evaluation_metrics_15incois.csv")
+    csv_native = Path("evaluation_metrics.csv")
+
+    if csv_15.exists():
+        csv_path = csv_15
+    elif csv_native.exists():
+        csv_path = csv_native
+    else:
+        print(f"[!] Neither metrics CSV found. Running evaluation to generate metrics...")
         from evaluate import evaluate_model
         evaluate_model()
+        csv_path = csv_15 if csv_15.exists() else csv_native
 
     df = pd.read_csv(csv_path)
 
-    # Automatically attach physical depth (m) if missing
+    # Attach physical depth (m) if missing
     if "depth_m" not in df.columns:
-        nc_path = Path("predicted_subsurface_temp.nc")
-        if nc_path.exists():
-            ds = xr.open_dataset(nc_path)
-            df.insert(1, "depth_m", ds["depth"].values)
-            df.to_csv(csv_path, index=False)
+        if len(df) == len(INCOIS_STANDARD_DEPTHS_M):
+            df.insert(1, "depth_m", INCOIS_STANDARD_DEPTHS_M)
+        elif len(df) == len(NATIVE_DEPTHS_35):
+            df.insert(1, "depth_m", NATIVE_DEPTHS_35)
         else:
             df["depth_m"] = df["depth_index"]
 
@@ -66,7 +73,8 @@ def plot_vertical_metrics():
     axes[2].set_xlim(-0.1, 1.0)
     axes[2].grid(True, linestyle="--", alpha=0.6)
 
-    plt.suptitle("OceanEmbed: Subsurface Temperature Performance vs. Depth (m)", fontsize=14, fontweight="bold")
+    title_suffix = "(15 INCOIS Standard Depths)" if "15incois" in csv_path.name else "(35 Native Depths)"
+    plt.suptitle(f"OceanEmbed: Subsurface Temperature Performance vs. Depth {title_suffix}", fontsize=14, fontweight="bold")
     plt.tight_layout()
 
     out_img = Path("metrics_vs_depth.png")
@@ -90,13 +98,13 @@ def plot_spatial_slices():
     stats = checkpoint.get("stats", {})
     _, _, test_loader, _ = get_dataloaders(batch_size=1)
 
-    # Grab first test sample and enforce 3D shapes: (35, 101, 241)
+    # Grab first test sample and enforce 3D shape: (35, H, W)
     x, y, mask = next(iter(test_loader))
     with torch.no_grad():
-        pred = model(x.to(device)).cpu().numpy().squeeze()  # Force shape: (35, 101, 241)
+        pred = model(x.to(device)).cpu().numpy().squeeze()
 
-    target = y.numpy().squeeze()      # Force shape: (35, 101, 241)
-    mask_2d = mask.numpy().squeeze()  # Force shape: (101, 241)
+    target = y.numpy().squeeze()
+    mask_2d = mask.numpy().squeeze()
 
     # Un-normalize targets and predictions if normalization stats exist
     if "target_mean" in stats and "target_std" in stats:
@@ -110,21 +118,19 @@ def plot_spatial_slices():
         pred = pred * t_std + t_mean
         target = target * t_std + t_mean
 
-    # Mask land cells with NaN across all depth levels
+    # Mask land cells with NaN across all 35 depth levels
     land_mask = (mask_2d == 0)
     for d in range(35):
         pred[d][land_mask] = np.nan
         target[d][land_mask] = np.nan
 
-    # Get depth values in meters for subfigure titles
-    depth_m_vals = None
-    nc_path = Path("predicted_subsurface_temp.nc")
-    if nc_path.exists():
-        ds_nc = xr.open_dataset(nc_path)
-        depth_m_vals = ds_nc["depth"].values
+    # Target specific physical depths (~0m, ~100m, ~150m/500m) in 35 native levels
+    target_depths_m = [0.0, 100.0, 150.0]
+    depth_indices = [
+        int(np.argmin(np.abs(np.array(NATIVE_DEPTHS_35) - td))) 
+        for td in target_depths_m
+    ]
 
-    # Select representative depth layers: Surface (0), Thermocline (~100m, idx 10), Deep (~500m, idx 20)
-    depth_indices = [0, 10, 20]
     fig, axes = plt.subplots(len(depth_indices), 3, figsize=(15, 10))
 
     for row_idx, d_idx in enumerate(depth_indices):
@@ -134,8 +140,7 @@ def plot_spatial_slices():
 
         v_min = np.nanmin(t_slice)
         v_max = np.nanmax(t_slice)
-
-        depth_label = f"{depth_m_vals[d_idx]:.1f}m" if depth_m_vals is not None else f"Level {d_idx}"
+        depth_label = f"{NATIVE_DEPTHS_35[d_idx]:.1f}m"
 
         # Ground Truth Target
         im0 = axes[row_idx, 0].imshow(t_slice, cmap="viridis", vmin=v_min, vmax=v_max, origin="lower")
