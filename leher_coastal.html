@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>LEHER — Sea Conditions</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --abyss:#031B2E; --deep:#04304F; --current:#0B5A7A; --surface:#1E96B0;
+    --foam:#A8E6E8; --coral:#FF7A4D; --ok:#5FD8A0; --amber:#E8B44D;
+    --text:#EAF6F6; --text-dim:rgba(234,246,246,0.66); --text-dim-2:rgba(234,246,246,0.42);
+    --line:rgba(168,230,232,0.14);
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{
+    background:var(--abyss); color:var(--text); font-family:'IBM Plex Sans',sans-serif;
+    min-height:100vh; -webkit-tap-highlight-color:transparent;
+  }
+  h1,h2,h3,.display{ font-family:'Space Grotesk',sans-serif; font-weight:600; }
+  .num{ font-variant-numeric: tabular-nums; }
+  button{ font-family:inherit; cursor:pointer; }
+
+  /* page backdrop so the phone frame reads on a wide desktop preview too */
+  .page{
+    min-height:100vh; display:flex; justify-content:center; align-items:stretch;
+    background:
+      radial-gradient(ellipse 80% 50% at 30% 0%, rgba(30,150,176,0.18), transparent 60%),
+      var(--abyss);
+  }
+
+  .app{
+    width:100%; max-width:428px; min-height:100vh; background:var(--deep);
+    display:flex; flex-direction:column; position:relative;
+    box-shadow:0 0 80px rgba(0,0,0,0.5);
+  }
+
+  /* ---- top bar ---- */
+  .topbar{ padding:18px 20px 14px; display:flex; align-items:center; justify-content:space-between; }
+  .mark{ display:flex; align-items:center; gap:8px; font-weight:700; font-size:17px; color:var(--text); text-decoration:none; }
+  .mark svg{ width:18px; height:18px; color:var(--foam); }
+  .lang-row{ display:flex; gap:6px; overflow-x:auto; padding:0 20px 14px; -ms-overflow-style:none; scrollbar-width:none; }
+  .lang-row::-webkit-scrollbar{ display:none; }
+  .lang-pill{
+    flex-shrink:0; background:rgba(168,230,232,0.08); border:1px solid var(--line); color:var(--text-dim);
+    padding:7px 14px; border-radius:100px; font-size:12.5px; font-weight:500;
+  }
+  .lang-pill.active{ background:var(--foam); color:var(--abyss); border-color:var(--foam); }
+
+  /* ---- scroll area ---- */
+  .screens{ flex:1; overflow-y:auto; padding:4px 20px 100px; }
+  .screen{ display:none; }
+  .screen.active{ display:block; animation:fadeIn 0.3s ease; }
+  @keyframes fadeIn{ from{ opacity:0; transform:translateY(6px);} to{ opacity:1; transform:translateY(0);} }
+
+  .location-row{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    margin-bottom:16px; padding:12px 14px; background:rgba(3,27,46,0.5); border:1px solid var(--line); border-radius:12px;
+  }
+  .location-row .loc-name{ font-size:15px; font-weight:600; display:flex; align-items:center; gap:8px; }
+  .location-row .loc-name svg{ width:16px; height:16px; color:var(--foam); flex-shrink:0; }
+  .change-btn{ background:none; border:none; color:var(--surface); font-size:12.5px; font-weight:600; text-decoration:underline; }
+
+  /* ---- today's sea hero card ---- */
+  .sea-card{
+    border-radius:22px; padding:28px 24px 24px; margin-bottom:18px; text-align:center; position:relative; overflow:hidden;
+    background:linear-gradient(160deg, var(--current) 0%, var(--deep) 100%);
+    border:1px solid rgba(168,230,232,0.18);
+  }
+  .sea-card .ring{
+    position:absolute; inset:-30% -30% auto auto; width:60%; padding-top:60%;
+    background:radial-gradient(circle, rgba(168,230,232,0.16), transparent 70%);
+  }
+  .sea-card .cond-icon{ width:64px; height:64px; margin:0 auto 6px; position:relative; }
+  .sea-card .cond-word{ font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:26px; letter-spacing:0.01em; position:relative; }
+  .sea-card .cond-sub{ font-size:13px; color:var(--text-dim); margin-top:4px; position:relative; }
+  .sea-card .big-temp{ font-family:'Space Grotesk',sans-serif; font-size:56px; font-weight:600; margin:14px 0 2px; position:relative; }
+  .sea-card .big-temp .unit{ font-size:24px; color:var(--text-dim); }
+  .sea-card .norm-chip{
+    display:inline-block; margin-top:10px; font-size:12px; padding:6px 14px; border-radius:100px;
+    background:rgba(3,27,46,0.4); color:var(--text-dim); position:relative;
+  }
+
+  .forecast-row{ display:flex; gap:10px; margin-bottom:22px; }
+  .fday{
+    flex:1; background:rgba(3,27,46,0.5); border:1px solid var(--line); border-radius:14px;
+    padding:14px 6px; text-align:center;
+  }
+  .fday .fd-label{ font-size:11.5px; color:var(--text-dim-2); margin-bottom:8px; }
+  .fday svg{ width:26px; height:26px; margin-bottom:8px; color:var(--foam); }
+  .fday .fd-word{ font-size:12px; font-weight:600; }
+
+  .section-title{ font-size:13px; font-weight:600; color:var(--foam); margin:6px 0 12px; letter-spacing:0.01em; }
+
+  .big-btn{
+    display:flex; align-items:center; gap:14px; width:100%; padding:16px 16px; margin-bottom:12px;
+    background:rgba(168,230,232,0.06); border:1px solid var(--line); border-radius:16px; color:var(--text); text-align:left;
+  }
+  .big-btn svg{ width:28px; height:28px; color:var(--foam); flex-shrink:0; }
+  .big-btn .bt-title{ font-size:15px; font-weight:600; }
+  .big-btn .bt-sub{ font-size:12px; color:var(--text-dim-2); margin-top:2px; }
+
+  /* ---- simplified map ---- */
+  .map-box{
+    position:relative; border-radius:16px; overflow:hidden; border:1px solid var(--line); margin-bottom:16px;
+    height:230px; background:var(--abyss);
+  }
+  #mapCanvas{ width:100%; height:100%; display:block; }
+  .map-legend-simple{
+    position:absolute; bottom:10px; left:10px; right:10px; display:flex; gap:6px;
+    background:rgba(3,27,46,0.7); border-radius:10px; padding:8px 10px;
+  }
+  .map-legend-simple .band{ flex:1; text-align:center; font-size:10px; color:var(--text-dim); }
+  .map-legend-simple .swatch{ width:100%; height:6px; border-radius:3px; margin-bottom:4px; }
+
+  .region-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:8px; }
+  .region-tile{
+    padding:14px 12px; background:rgba(168,230,232,0.06); border:1px solid var(--line); border-radius:14px;
+    text-align:left; color:var(--text);
+  }
+  .region-tile.selected{ background:rgba(168,230,232,0.16); border-color:var(--foam); }
+  .region-tile .rt-name{ font-size:14px; font-weight:600; margin-bottom:3px; }
+  .region-tile .rt-temp{ font-size:12px; color:var(--text-dim); }
+
+  /* ---- disclaimer / notice banners ---- */
+  .banner{
+    display:flex; gap:12px; padding:14px; border-radius:14px; margin-bottom:16px; align-items:flex-start;
+  }
+  .banner.warn{ background:rgba(232,180,77,0.1); border:1px solid rgba(232,180,77,0.35); }
+  .banner.info{ background:rgba(30,150,176,0.1); border:1px solid rgba(30,150,176,0.35); }
+  .banner svg{ width:20px; height:20px; flex-shrink:0; margin-top:1px; }
+  .banner.warn svg{ color:var(--amber); }
+  .banner.info svg{ color:var(--surface); }
+  .banner p{ font-size:12.5px; line-height:1.6; color:var(--text-dim); }
+  .banner b{ color:var(--text); }
+
+  .zone-card{
+    padding:16px; background:rgba(168,230,232,0.06); border:1px solid var(--line); border-radius:16px; margin-bottom:12px;
+  }
+  .zone-card .zc-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+  .zone-card .zc-name{ font-size:14.5px; font-weight:600; }
+  .zone-card .zc-tag{ font-size:10.5px; padding:3px 9px; border-radius:100px; background:rgba(255,122,77,0.14); color:var(--coral); }
+  .zone-card p{ font-size:12.5px; color:var(--text-dim); line-height:1.6; }
+
+  .coming-soon{
+    text-align:center; padding:48px 20px; color:var(--text-dim-2);
+  }
+  .coming-soon svg{ width:44px; height:44px; margin-bottom:16px; color:var(--surface); opacity:0.7; }
+  .coming-soon h3{ color:var(--text); font-size:16px; margin-bottom:8px; }
+  .coming-soon p{ font-size:12.5px; line-height:1.7; max-width:280px; margin:0 auto; }
+  .notify-row{
+    display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:22px; padding:14px 16px;
+    background:rgba(3,27,46,0.5); border:1px solid var(--line); border-radius:14px; max-width:280px; margin-left:auto; margin-right:auto;
+  }
+  .notify-row span{ font-size:12.5px; color:var(--text-dim); }
+  .switch{ width:38px; height:22px; background:rgba(168,230,232,0.15); border-radius:100px; position:relative; flex-shrink:0; opacity:0.4; }
+  .switch::after{ content:''; position:absolute; top:2px; left:2px; width:18px; height:18px; border-radius:50%; background:var(--text-dim-2); }
+
+  /* ---- bottom nav ---- */
+  .bottom-nav{
+    position:absolute; bottom:0; left:0; right:0; display:flex; background:rgba(3,27,46,0.92);
+    backdrop-filter:blur(14px); border-top:1px solid var(--line); padding:8px 6px calc(10px + env(safe-area-inset-bottom));
+  }
+  .nav-btn{
+    flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; background:none; border:none;
+    color:var(--text-dim-2); padding:8px 2px; border-radius:10px; font-size:10.5px;
+  }
+  .nav-btn svg{ width:21px; height:21px; }
+  .nav-btn.active{ color:var(--foam); }
+
+  ::-webkit-scrollbar{ width:6px; } ::-webkit-scrollbar-thumb{ background:var(--line); border-radius:3px; }
+</style>
+</head>
+<body>
+
+<div class="page">
+<div class="app">
+
+  <div class="topbar">
+    <a class="mark" href="leher_landing.html" aria-label="Back to LEHER home">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M2 12c2 0 2-3 4-3s2 3 4 3 2-3 4-3 2 3 4 3 2-3 4-3 2 3 4 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      LEHER
+    </a>
+    <svg viewBox="0 0 24 24" fill="none" style="width:20px;height:20px;color:var(--text-dim);"><circle cx="12" cy="8" r="3.4" stroke="currentColor" stroke-width="1.4"/><path d="M5 20c1.5-3.5 4.2-5 7-5s5.5 1.5 7 5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+  </div>
+
+  <div class="lang-row" id="langRow">
+    <button class="lang-pill active" data-lang="en">English</button>
+    <button class="lang-pill" data-lang="hi">हिन्दी</button>
+    <button class="lang-pill" data-lang="ta">தமிழ்</button>
+    <button class="lang-pill" data-lang="te">తెలుగు</button>
+    <button class="lang-pill" data-lang="bn">বাংলা</button>
+  </div>
+
+  <div class="screens">
+
+    <!-- ===== TODAY ===== -->
+    <section class="screen active" id="screen-today">
+      <div class="location-row">
+        <div class="loc-name">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M12 21s7-6.4 7-12a7 7 0 1 0-14 0c0 5.6 7 12 7 12Z" stroke="currentColor" stroke-width="1.4"/><circle cx="12" cy="9" r="2.4" stroke="currentColor" stroke-width="1.4"/></svg>
+          <span id="locName">Kochi</span>
+        </div>
+        <button class="change-btn" data-goto="map" data-t="changeLoc">Change</button>
+      </div>
+
+      <div class="sea-card">
+        <div class="ring"></div>
+        <div class="cond-icon" id="condIcon"></div>
+        <div class="cond-word" id="condWord">NORMAL</div>
+        <div class="cond-sub" data-t="condSub">Sea condition today</div>
+        <div class="big-temp"><span id="bigTemp">28</span><span class="unit">°C</span></div>
+        <div class="norm-chip" id="normChip">Close to the usual for this time of year</div>
+      </div>
+
+      <div class="section-title" data-t="nextDays">NEXT 3 DAYS</div>
+      <div class="forecast-row" id="forecastRow"></div>
+
+      <div class="section-title" data-t="quickLinks">QUICK LINKS</div>
+      <button class="big-btn" data-goto="fishing">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6Z" stroke="currentColor" stroke-width="1.4"/><circle cx="15" cy="12" r="1.4" fill="currentColor"/></svg>
+        <div><div class="bt-title" data-t="fishingTitle">Fishing zone guidance</div><div class="bt-sub" data-t="fishingSub">Where warm-water fish tend to gather</div></div>
+      </button>
+      <button class="big-btn" data-goto="safety">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 3 4 6v6c0 5 3.4 8.5 8 9 4.6-0.5 8-4 8-9V6l-8-3Z" stroke="currentColor" stroke-width="1.4"/></svg>
+        <div><div class="bt-title" data-t="safetyTitle">Safety notices</div><div class="bt-sub" data-t="safetySub">Alerts for this coast</div></div>
+      </button>
+    </section>
+
+    <!-- ===== MAP / CHOOSE LOCATION ===== -->
+    <section class="screen" id="screen-map">
+      <div class="section-title" data-t="mapTitle">SEA TEMPERATURE, YOUR COAST</div>
+      <div class="map-box">
+        <canvas id="mapCanvas"></canvas>
+        <div class="map-legend-simple">
+          <div class="band"><div class="swatch" style="background:#0B5A7A;"></div><span data-t="bandCool">Cool</span></div>
+          <div class="band"><div class="swatch" style="background:#1E96B0;"></div><span data-t="bandNormal">Normal</span></div>
+          <div class="band"><div class="swatch" style="background:#A8E6E8;"></div><span data-t="bandWarm">Warm</span></div>
+          <div class="band"><div class="swatch" style="background:#FF7A4D;"></div><span data-t="bandHot">Very warm</span></div>
+        </div>
+      </div>
+      <div class="section-title" data-t="pickCoast">TAP YOUR COAST</div>
+      <div class="region-grid" id="regionGrid"></div>
+    </section>
+
+    <!-- ===== FISHING ZONE GUIDANCE ===== -->
+    <section class="screen" id="screen-fishing">
+      <div class="section-title" data-t="fishingHeader">ZONES OF INTEREST — <span id="fishingLoc">KOCHI</span></div>
+      <div class="banner warn">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 3 2 20h20L12 3Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><line x1="12" y1="9" x2="12" y2="14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="17" r="0.9" fill="currentColor"/></svg>
+        <p data-t="fishingDisclaimer"><b>A guide, not a guarantee.</b> These zones are based on ocean temperature patterns only. Always use your own judgement and local knowledge alongside this.</p>
+      </div>
+      <div id="zoneList"></div>
+      <div class="banner info">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.4"/><line x1="12" y1="8" x2="12" y2="8.4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="12" y1="11" x2="12" y2="16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        <p data-t="fishingWhy">Fish often gather where warm and cool water meet, or near the thermocline. These zones mark the sharpest temperature edges near your coast today.</p>
+      </div>
+    </section>
+
+    <!-- ===== SAFETY ===== -->
+    <section class="screen" id="screen-safety">
+      <div class="section-title" data-t="safetyHeader">SAFETY NOTICES</div>
+      <div class="coming-soon">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 3 4 6v6c0 5 3.4 8.5 8 9 4.6-0.5 8-4 8-9V6l-8-3Z" stroke="currentColor" stroke-width="1.3"/><path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <h3 data-t="comingSoonTitle">Coming soon</h3>
+        <p data-t="comingSoonBody">Real-time alerts for unusually warm water or storm-relevant signals will appear here once a live alert feed is connected. Nothing is shown here yet so nothing false is ever shown.</p>
+        <div class="notify-row">
+          <span data-t="notifyMe">Notify me when this is live</span>
+          <div class="switch"></div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <div class="bottom-nav" id="bottomNav">
+    <button class="nav-btn active" data-goto="today">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M3 18c2 1.5 4 1.5 6 0s4-1.5 6 0 4 1.5 6 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M7 14c1-4 3-8 5-10 2 2 4 6 5 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      <span data-t="navToday">Today</span>
+    </button>
+    <button class="nav-btn" data-goto="map">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M9 4 4 6v14l5-2 6 2 5-2V4l-5 2-6-2Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><line x1="9" y1="4" x2="9" y2="18" stroke="currentColor" stroke-width="1.2"/><line x1="15" y1="6" x2="15" y2="20" stroke="currentColor" stroke-width="1.2"/></svg>
+      <span data-t="navMap">Map</span>
+    </button>
+    <button class="nav-btn" data-goto="fishing">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6Z" stroke="currentColor" stroke-width="1.4"/></svg>
+      <span data-t="navFishing">Fishing</span>
+    </button>
+    <button class="nav-btn" data-goto="safety">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M12 3 4 6v6c0 5 3.4 8.5 8 9 4.6-0.5 8-4 8-9V6l-8-3Z" stroke="currentColor" stroke-width="1.4"/></svg>
+      <span data-t="navSafety">Safety</span>
+    </button>
+  </div>
+
+</div>
+</div>
+
+<script>
+/* ================= translations ================= */
+const T = {
+  en:{ changeLoc:'Change', condSub:'Sea condition today', nextDays:'NEXT 3 DAYS', quickLinks:'QUICK LINKS',
+    fishingTitle:'Fishing zone guidance', fishingSub:'Where warm-water fish tend to gather',
+    safetyTitle:'Safety notices', safetySub:'Alerts for this coast',
+    mapTitle:'SEA TEMPERATURE, YOUR COAST', pickCoast:'TAP YOUR COAST',
+    bandCool:'Cool', bandNormal:'Normal', bandWarm:'Warm', bandHot:'Very warm',
+    fishingHeader:'ZONES OF INTEREST —', fishingDisclaimer:'<b>A guide, not a guarantee.</b> These zones are based on ocean temperature patterns only. Always use your own judgement and local knowledge alongside this.',
+    fishingWhy:'Fish often gather where warm and cool water meet, or near the thermocline. These zones mark the sharpest temperature edges near your coast today.',
+    safetyHeader:'SAFETY NOTICES', comingSoonTitle:'Coming soon',
+    comingSoonBody:'Real-time alerts for unusually warm water or storm-relevant signals will appear here once a live alert feed is connected. Nothing is shown here yet so nothing false is ever shown.',
+    notifyMe:'Notify me when this is live',
+    navToday:'Today', navMap:'Map', navFishing:'Fishing', navSafety:'Safety',
+    warm:'WARM', normal:'NORMAL', cool:'COOL',
+    normHigh:'Warmer than usual for this time of year', normMid:'Close to the usual for this time of year', normLow:'Cooler than usual for this time of year' },
+  hi:{ changeLoc:'बदलें', condSub:'आज समुद्र की स्थिति', nextDays:'अगले 3 दिन', quickLinks:'त्वरित लिंक',
+    fishingTitle:'मछली पकड़ने के क्षेत्र', fishingSub:'गर्म पानी की मछलियाँ कहाँ जमा होती हैं',
+    safetyTitle:'सुरक्षा सूचनाएं', safetySub:'इस तट के लिए अलर्ट',
+    mapTitle:'समुद्र का तापमान, आपका तट', pickCoast:'अपना तट चुनें',
+    bandCool:'ठंडा', bandNormal:'सामान्य', bandWarm:'गर्म', bandHot:'बहुत गर्म',
+    fishingHeader:'रुचि के क्षेत्र —', fishingDisclaimer:'<b>यह एक सलाह है, गारंटी नहीं।</b> ये क्षेत्र केवल समुद्री तापमान के पैटर्न पर आधारित हैं। हमेशा अपने अनुभव और स्थानीय जानकारी का भी उपयोग करें।',
+    fishingWhy:'मछलियाँ अक्सर गर्म और ठंडे पानी के मिलन बिंदु पर जमा होती हैं। ये क्षेत्र आज आपके तट के पास सबसे तेज़ तापमान बदलाव दिखाते हैं।',
+    safetyHeader:'सुरक्षा सूचनाएं', comingSoonTitle:'जल्द आ रहा है',
+    comingSoonBody:'गर्म पानी या तूफान से जुड़े रीयल-टाइम अलर्ट यहाँ तभी दिखेंगे जब लाइव फीड जुड़ जाएगी। अभी कुछ भी झूठा नहीं दिखाया जाता।',
+    notifyMe:'लाइव होने पर सूचित करें',
+    navToday:'आज', navMap:'नक्शा', navFishing:'मछली पकड़ना', navSafety:'सुरक्षा',
+    warm:'गर्म', normal:'सामान्य', cool:'ठंडा',
+    normHigh:'इस मौसम के हिसाब से सामान्य से गर्म', normMid:'इस समय के लिए सामान्य के करीब', normLow:'इस मौसम के हिसाब से सामान्य से ठंडा' },
+  ta:{ changeLoc:'மாற்று', condSub:'இன்றைய கடல் நிலை', nextDays:'அடுத்த 3 நாட்கள்', quickLinks:'விரைவு இணைப்புகள்',
+    fishingTitle:'மீன்பிடி மண்டல வழிகாட்டி', fishingSub:'சூடான நீர் மீன்கள் கூடும் இடங்கள்',
+    safetyTitle:'பாதுகாப்பு அறிவிப்புகள்', safetySub:'இந்த கடற்கரைக்கான எச்சரிக்கைகள்',
+    mapTitle:'கடல் வெப்பநிலை, உங்கள் கடற்கரை', pickCoast:'உங்கள் கடற்கரையைத் தேர்ந்தெடுக்கவும்',
+    bandCool:'குளிர்ச்சி', bandNormal:'சாதாரண', bandWarm:'சூடு', bandHot:'மிக சூடு',
+    fishingHeader:'ஆர்வமுள்ள மண்டலங்கள் —', fishingDisclaimer:'<b>இது ஒரு வழிகாட்டி, உத்தரவாதம் அல்ல.</b> இந்த மண்டலங்கள் கடல் வெப்பநிலை மாதிரிகளை மட்டுமே அடிப்படையாகக் கொண்டவை. உங்கள் அனுபவத்தையும் பயன்படுத்தவும்.',
+    fishingWhy:'சூடான மற்றும் குளிர்ந்த நீர் சந்திக்கும் இடங்களில் மீன்கள் கூடுவது வழக்கம். இவை இன்று உங்கள் கடற்கரைக்கு அருகில் உள்ள கூர்மையான வெப்பநிலை மாற்றங்கள்.',
+    safetyHeader:'பாதுகாப்பு அறிவிப்புகள்', comingSoonTitle:'விரைவில் வரும்',
+    comingSoonBody:'நேரடி எச்சரிக்கை தரவு இணைக்கப்பட்டதும் மட்டுமே இங்கு அறிவிப்புகள் தோன்றும். இப்போது தவறான தகவல் எதுவும் காட்டப்படாது.',
+    notifyMe:'இது நேரடியாக வரும்போது தெரிவிக்கவும்',
+    navToday:'இன்று', navMap:'வரைபடம்', navFishing:'மீன்பிடி', navSafety:'பாதுகாப்பு',
+    warm:'சூடு', normal:'சாதாரண', cool:'குளிர்ச்சி',
+    normHigh:'இந்த காலத்திற்கு வழக்கத்தை விட சூடு', normMid:'இந்த நேரத்திற்கான வழக்கத்திற்கு நெருக்கமானது', normLow:'இந்த காலத்திற்கு வழக்கத்தை விட குளிர்ச்சி' },
+  te:{ changeLoc:'మార్చు', condSub:'నేటి సముద్ర పరిస్థితి', nextDays:'తదుపరి 3 రోజులు', quickLinks:'త్వరిత లింకులు',
+    fishingTitle:'చేపలు పట్టే మండల మార్గదర్శకం', fishingSub:'వెచ్చని నీటి చేపలు గుమిగూడే చోటు',
+    safetyTitle:'భద్రతా నోటీసులు', safetySub:'ఈ తీరానికి హెచ్చరికలు',
+    mapTitle:'సముద్ర ఉష్ణోగ్రత, మీ తీరం', pickCoast:'మీ తీరాన్ని ఎంచుకోండి',
+    bandCool:'చల్లని', bandNormal:'సాధారణ', bandWarm:'వెచ్చని', bandHot:'చాలా వెచ్చని',
+    fishingHeader:'ఆసక్తికర ప్రాంతాలు —', fishingDisclaimer:'<b>ఇది ఒక మార్గదర్శకం, హామీ కాదు.</b> ఈ ప్రాంతాలు సముద్ర ఉష్ణోగ్రత నమూనాల ఆధారంగానే ఉన్నాయి. ఎల్లప్పుడూ మీ స్వంత అనుభవాన్ని కూడా ఉపయోగించండి.',
+    fishingWhy:'వెచ్చని మరియు చల్లని నీరు కలిసే చోట చేపలు తరచుగా గుమిగూడతాయి. ఇవి ఈ రోజు మీ తీరానికి సమీపంలో ఉన్న పదునైన ఉష్ణోగ్రత మార్పులు.',
+    safetyHeader:'భద్రతా నోటీసులు', comingSoonTitle:'త్వరలో వస్తుంది',
+    comingSoonBody:'ప్రత్యక్ష హెచ్చరిక ఫీడ్ అనుసంధానించబడిన తర్వాతే ఇక్కడ నోటీసులు కనిపిస్తాయి. ఇప్పుడు తప్పుడు సమాచారం ఏదీ చూపబడదు.',
+    notifyMe:'ఇది ప్రత్యక్షమైనప్పుడు తెలియజేయండి',
+    navToday:'నేడు', navMap:'మ్యాప్', navFishing:'చేపలవేట', navSafety:'భద్రత',
+    warm:'వెచ్చని', normal:'సాధారణ', cool:'చల్లని',
+    normHigh:'ఈ కాలానికి సాధారణం కంటే వెచ్చగా ఉంది', normMid:'ఈ సమయానికి సాధారణానికి దగ్గరగా ఉంది', normLow:'ఈ కాలానికి సాధారణం కంటే చల్లగా ఉంది' },
+  bn:{ changeLoc:'পরিবর্তন', condSub:'আজকের সমুদ্র অবস্থা', nextDays:'পরবর্তী ৩ দিন', quickLinks:'দ্রুত লিঙ্ক',
+    fishingTitle:'মাছ ধরার অঞ্চল নির্দেশিকা', fishingSub:'উষ্ণ জলের মাছ যেখানে জড়ো হয়',
+    safetyTitle:'নিরাপত্তা বিজ্ঞপ্তি', safetySub:'এই উপকূলের জন্য সতর্কতা',
+    mapTitle:'সমুদ্রের তাপমাত্রা, আপনার উপকূল', pickCoast:'আপনার উপকূল বেছে নিন',
+    bandCool:'ঠান্ডা', bandNormal:'স্বাভাবিক', bandWarm:'উষ্ণ', bandHot:'অত্যন্ত উষ্ণ',
+    fishingHeader:'আগ্রহের অঞ্চল —', fishingDisclaimer:'<b>এটি একটি নির্দেশিকা, নিশ্চয়তা নয়।</b> এই অঞ্চলগুলি শুধুমাত্র সমুদ্রের তাপমাত্রার প্যাটার্নের উপর ভিত্তি করে। সর্বদা আপনার নিজের অভিজ্ঞতাও ব্যবহার করুন।',
+    fishingWhy:'উষ্ণ ও ঠান্ডা জল যেখানে মেলে সেখানে মাছ প্রায়ই জড়ো হয়। এগুলি আজ আপনার উপকূলের কাছে সবচেয়ে তীক্ষ্ণ তাপমাত্রার পরিবর্তন দেখায়।',
+    safetyHeader:'নিরাপত্তা বিজ্ঞপ্তি', comingSoonTitle:'শীঘ্রই আসছে',
+    comingSoonBody:'লাইভ অ্যালার্ট ফিড সংযুক্ত হলে তবেই এখানে রিয়েল-টাইম সতর্কতা দেখা যাবে। এখন কোনো ভুল তথ্য দেখানো হয় না।',
+    notifyMe:'লাইভ হলে জানান',
+    navToday:'আজ', navMap:'মানচিত্র', navFishing:'মাছ ধরা', navSafety:'নিরাপত্তা',
+    warm:'উষ্ণ', normal:'স্বাভাবিক', cool:'ঠান্ডা',
+    normHigh:'এই সময়ের জন্য স্বাভাবিকের চেয়ে উষ্ণ', normMid:'এই সময়ের স্বাভাবিকের কাছাকাছি', normLow:'এই সময়ের জন্য স্বাভাবিকের চেয়ে ঠান্ডা' }
+};
+let lang = 'en';
+
+/* ================= field engine (consistent with other dashboards) ================= */
+const LAT_MIN=5, LAT_MAX=30, LON_MIN=45, LON_MAX=105;
+function tempAt(lat,lon){
+  const latN=(lat-LAT_MIN)/(LAT_MAX-LAT_MIN), lonN=(lon-LON_MIN)/(LON_MAX-LON_MIN);
+  const base = 27.5 - 3.2*latN + 1.8*Math.sin(lonN*6.2+latN*2.4) + 0.8*Math.cos(lonN*3.1);
+  const noise = Math.sin(lat*1.1)*Math.cos(lon*0.8)*0.9;
+  return base+noise;
+}
+function seasonalNorm(lat,lon){
+  const latN=(lat-LAT_MIN)/(LAT_MAX-LAT_MIN), lonN=(lon-LON_MIN)/(LON_MAX-LON_MIN);
+  return 27.5 - 3.2*latN + 1.8*Math.sin(lonN*6.2+latN*2.4) + 0.8*Math.cos(lonN*3.1);
+}
+function bandColor(t){
+  if(t<25) return '#0B5A7A';
+  if(t<27.5) return '#1E96B0';
+  if(t<29.5) return '#A8E6E8';
+  return '#FF7A4D';
+}
+
+const regions = [
+  {name:'Mumbai', lat:19.0, lon:72.8},
+  {name:'Goa', lat:15.3, lon:73.9},
+  {name:'Kochi', lat:9.9, lon:76.2},
+  {name:'Chennai', lat:13.0, lon:80.3},
+  {name:'Visakhapatnam', lat:17.7, lon:83.3},
+  {name:'Kolkata', lat:21.5, lon:88.0},
+];
+let selectedRegion = regions[2]; // Kochi
+
+/* ================= today card ================= */
+function conditionFor(lat,lon){
+  const t = tempAt(lat,lon), norm = seasonalNorm(lat,lon);
+  const diff = t - norm;
+  if(diff > 0.6) return {tier:'warm', t, diff};
+  if(diff < -0.6) return {tier:'cool', t, diff};
+  return {tier:'normal', t, diff};
+}
+const ICONS = {
+  warm: '<svg viewBox="0 0 24 24" fill="none" style="width:100%;height:100%;"><circle cx="12" cy="12" r="5" stroke="#FF7A4D" stroke-width="1.6"/><g stroke="#FF7A4D" stroke-width="1.6" stroke-linecap="round"><line x1="12" y1="1.5" x2="12" y2="4.5"/><line x1="12" y1="19.5" x2="12" y2="22.5"/><line x1="1.5" y1="12" x2="4.5" y2="12"/><line x1="19.5" y1="12" x2="22.5" y2="12"/><line x1="4.4" y1="4.4" x2="6.5" y2="6.5"/><line x1="17.5" y1="17.5" x2="19.6" y2="19.6"/><line x1="4.4" y1="19.6" x2="6.5" y2="17.5"/><line x1="17.5" y1="6.5" x2="19.6" y2="4.4"/></g></svg>',
+  normal: '<svg viewBox="0 0 24 24" fill="none" style="width:100%;height:100%;"><path d="M3 15c2 1.4 4 1.4 6 0s4-1.4 6 0 4 1.4 6 0" stroke="#A8E6E8" stroke-width="1.6" stroke-linecap="round"/><path d="M3 19c2 1.4 4 1.4 6 0s4-1.4 6 0 4 1.4 6 0" stroke="#1E96B0" stroke-width="1.6" stroke-linecap="round"/><circle cx="9" cy="7" r="4" stroke="#A8E6E8" stroke-width="1.6"/></svg>',
+  cool: '<svg viewBox="0 0 24 24" fill="none" style="width:100%;height:100%;"><path d="M12 2v20M4.5 6.5l15 11M19.5 6.5l-15 11" stroke="#1E96B0" stroke-width="1.4" stroke-linecap="round"/></svg>'
+};
+function renderToday(){
+  const c = conditionFor(selectedRegion.lat, selectedRegion.lon);
+  document.getElementById('locName').textContent = selectedRegion.name;
+  document.getElementById('condIcon').innerHTML = ICONS[c.tier];
+  document.getElementById('condWord').textContent = T[lang][c.tier].toUpperCase();
+  document.getElementById('bigTemp').textContent = c.t.toFixed(0);
+  const chip = document.getElementById('normChip');
+  chip.textContent = c.tier==='warm' ? T[lang].normHigh : c.tier==='cool' ? T[lang].normLow : T[lang].normMid;
+
+  const row = document.getElementById('forecastRow');
+  row.innerHTML = '';
+  const dayNames = ['+1','+2','+3'];
+  for(let i=0;i<3;i++){
+    const dv = c.diff + Math.sin(i*1.7)*0.8;
+    const tier = dv>0.6?'warm':dv<-0.6?'cool':'normal';
+    row.innerHTML += `<div class="fday"><div class="fd-label">${dayNames[i]}</div>${ICONS[tier].replace('style="width:100%;height:100%;"','style="width:26px;height:26px;"')}<div class="fd-word">${T[lang][tier]}</div></div>`;
+  }
+  document.getElementById('fishingLoc').textContent = selectedRegion.name.toUpperCase();
+}
+
+/* ================= map ================= */
+const canvas = document.getElementById('mapCanvas');
+const ctx = canvas.getContext('2d');
+function resizeCanvas(){
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width; canvas.height = rect.height;
+  drawMap();
+}
+function pxToLatLon(px,py){
+  return [LAT_MAX-(py/canvas.height)*(LAT_MAX-LAT_MIN), LON_MIN+(px/canvas.width)*(LON_MAX-LON_MIN)];
+}
+function latLonToPx(lat,lon){
+  return [((lon-LON_MIN)/(LON_MAX-LON_MIN))*canvas.width, ((LAT_MAX-lat)/(LAT_MAX-LAT_MIN))*canvas.height];
+}
+function drawMap(){
+  if(!canvas.width) return;
+  const cell=10;
+  for(let py=0; py<canvas.height; py+=cell){
+    for(let px=0; px<canvas.width; px+=cell){
+      const [lat,lon] = pxToLatLon(px+cell/2, py+cell/2);
+      ctx.fillStyle = bandColor(tempAt(lat,lon));
+      ctx.fillRect(px,py,cell+1,cell+1);
+    }
+  }
+  regions.forEach(r=>{
+    const [px,py] = latLonToPx(r.lat, r.lon);
+    const isSel = r.name===selectedRegion.name;
+    ctx.beginPath(); ctx.arc(px,py, isSel?8:5.5, 0, Math.PI*2);
+    ctx.fillStyle = isSel ? '#EAF6F6' : 'rgba(234,246,246,0.75)';
+    ctx.fill();
+    if(isSel){ ctx.lineWidth=2; ctx.strokeStyle='#031B2E'; ctx.stroke(); }
+  });
+}
+canvas.addEventListener('click', (e)=>{
+  const rect = canvas.getBoundingClientRect();
+  const [lat,lon] = pxToLatLon(e.clientX-rect.left, e.clientY-rect.top);
+  let nearest = regions[0], best = Infinity;
+  regions.forEach(r=>{
+    const d = Math.hypot(r.lat-lat, r.lon-lon);
+    if(d<best){ best=d; nearest=r; }
+  });
+  selectRegion(nearest);
+});
+
+/* ================= region grid ================= */
+function renderRegionGrid(){
+  const grid = document.getElementById('regionGrid');
+  grid.innerHTML = regions.map(r=>{
+    const t = tempAt(r.lat,r.lon);
+    const sel = r.name===selectedRegion.name ? 'selected' : '';
+    return `<button class="region-tile ${sel}" data-region="${r.name}"><div class="rt-name">${r.name}</div><div class="rt-temp num">${t.toFixed(0)}°C</div></button>`;
+  }).join('');
+  grid.querySelectorAll('.region-tile').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const r = regions.find(rr=>rr.name===el.dataset.region);
+      selectRegion(r);
+    });
+  });
+}
+function selectRegion(r){
+  selectedRegion = r;
+  drawMap(); renderToday(); renderRegionGrid(); renderZones();
+}
+
+/* ================= fishing zones (derived: strongest local gradient) ================= */
+function renderZones(){
+  const base = selectedRegion;
+  const candidates = [];
+  const dirs = [{a:'N',dlat:0.6,dlon:0},{a:'NE',dlat:0.45,dlon:0.45},{a:'E',dlat:0,dlon:0.6},
+                 {a:'SE',dlat:-0.45,dlon:0.45},{a:'S',dlat:-0.6,dlon:0},{a:'W',dlat:0,dlon:-0.6}];
+  dirs.forEach(d=>{
+    const lat = base.lat+d.dlat, lon = base.lon+d.dlon;
+    const t0 = tempAt(lat,lon), t1 = tempAt(lat+0.1,lon+0.1);
+    const grad = Math.abs(t1-t0);
+    candidates.push({dir:d.a, grad, km: Math.round(Math.hypot(d.dlat,d.dlon)*111)});
+  });
+  candidates.sort((a,b)=>b.grad-a.grad);
+  const top = candidates.slice(0,3);
+  const list = document.getElementById('zoneList');
+  list.innerHTML = top.map((z,i)=>`
+    <div class="zone-card">
+      <div class="zc-head"><span class="zc-name">${z.km} km ${z.dir} of ${selectedRegion.name}</span><span class="zc-tag">ZONE ${i+1}</span></div>
+      <p>A noticeable temperature edge in the water here — the kind of boundary where fish often gather. Worth a look, not a promise.</p>
+    </div>`).join('');
+}
+
+/* ================= navigation ================= */
+function goto(screen){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById('screen-'+screen).classList.add('active');
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+  const navBtn = document.querySelector(`.nav-btn[data-goto="${screen}"]`);
+  if(navBtn) navBtn.classList.add('active');
+  if(screen==='map') resizeCanvas();
+  document.querySelector('.screens').scrollTop = 0;
+}
+document.querySelectorAll('[data-goto]').forEach(el=>{
+  el.addEventListener('click', ()=> goto(el.dataset.goto));
+});
+
+/* ================= language switch ================= */
+document.getElementById('langRow').addEventListener('click', (e)=>{
+  const btn = e.target.closest('.lang-pill'); if(!btn) return;
+  document.querySelectorAll('.lang-pill').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  lang = btn.dataset.lang;
+  applyTranslations();
+  renderToday();
+});
+function applyTranslations(){
+  document.querySelectorAll('[data-t]').forEach(el=>{
+    const key = el.dataset.t;
+    if(T[lang][key]!==undefined) el.innerHTML = T[lang][key];
+  });
+}
+
+/* ================= init ================= */
+window.addEventListener('resize', ()=>{ if(document.getElementById('screen-map').classList.contains('active')) resizeCanvas(); });
+applyTranslations();
+renderRegionGrid();
+renderToday();
+renderZones();
+setTimeout(resizeCanvas, 50);
+</script>
+
+</body>
+</html>

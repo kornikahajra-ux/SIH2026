@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LEHER — Industry Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --abyss:#031B2E; --deep:#04304F; --current:#0B5A7A; --surface:#1E96B0;
+    --foam:#A8E6E8; --coral:#FF7A4D; --ok:#5FD8A0; --amber:#E8B44D;
+    --text:#EAF6F6; --text-dim:rgba(234,246,246,0.62); --text-dim-2:rgba(234,246,246,0.38);
+    --line:rgba(168,230,232,0.12);
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{
+    background:var(--abyss); color:var(--text); font-family:'IBM Plex Sans',sans-serif;
+    font-size:13.5px; height:100vh; overflow:hidden;
+  }
+  h1,h2,h3,.display{ font-family:'Space Grotesk',sans-serif; font-weight:600; }
+  .num{ font-variant-numeric: tabular-nums; }
+  button{ font-family:inherit; cursor:pointer; }
+  select{ font-family:inherit; }
+
+  .shell{ display:grid; grid-template-columns:232px 1fr 380px; grid-template-rows:58px 1fr; height:100vh; }
+
+  /* ---- sidebar ---- */
+  .sidebar{ grid-row:1/3; grid-column:1; background:var(--deep); border-right:1px solid var(--line); display:flex; flex-direction:column; padding:20px 16px; }
+  .mark{ display:flex; align-items:center; gap:9px; font-weight:700; font-size:16px; margin-bottom:24px; padding:0 4px; }
+  .mark svg{ width:17px; height:17px; color:var(--foam); }
+  .mark .tag{ font-size:9.5px; color:var(--text-dim-2); border:1px solid var(--line); padding:1px 6px; border-radius:3px; margin-left:auto; letter-spacing:0.04em; }
+
+  .role-switch{ display:flex; flex-direction:column; gap:4px; margin-bottom:24px; }
+  .label{ font-size:11px; color:var(--text-dim-2); padding:0 4px 6px; letter-spacing:0.04em; }
+  .role-pill{ display:flex; align-items:center; gap:9px; padding:9px 10px; border-radius:6px; font-size:13px; color:var(--text-dim); text-decoration:none; }
+  .role-pill.active{ background:rgba(168,230,232,0.1); color:var(--foam); }
+  .role-pill:hover{ background:rgba(168,230,232,0.06); color:var(--text); }
+  .role-pill svg{ width:15px; height:15px; flex-shrink:0; }
+
+  .section-nav{ display:flex; flex-direction:column; gap:2px; flex-grow:1; }
+  .nav-item{ padding:10px 10px; border-radius:6px; font-size:13px; color:var(--text-dim); background:none; border:none; text-align:left; width:100%; }
+  .nav-item.active{ background:var(--current); color:var(--text); }
+  .nav-item:hover:not(.active){ background:rgba(168,230,232,0.06); color:var(--text); }
+
+  .status-chip{ margin-top:auto; padding:12px; border-radius:8px; background:rgba(3,27,46,0.5); border:1px solid var(--line); }
+  .status-chip .dot{ width:6px; height:6px; border-radius:50%; background:var(--foam); display:inline-block; margin-right:7px; animation:pulse 2s infinite; }
+  @keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+  .status-chip .row1{ font-size:12px; color:var(--text-dim); margin-bottom:6px; }
+  .status-chip .row2{ font-size:11px; color:var(--text-dim-2); line-height:1.5; }
+
+  /* ---- topbar ---- */
+  .topbar{ grid-row:1; grid-column:2/4; background:var(--abyss); border-bottom:1px solid var(--line); display:flex; align-items:center; gap:20px; padding:0 24px; }
+  .tb-label{ font-size:11px; color:var(--text-dim-2); letter-spacing:0.03em; }
+  .tb-select{ background:var(--deep); color:var(--text); border:1px solid var(--line); padding:7px 10px; border-radius:6px; font-size:12.5px; }
+  .layer-toggle{ display:flex; border:1px solid var(--line); border-radius:6px; overflow:hidden; margin-left:auto; }
+  .layer-toggle button{ background:var(--deep); border:none; color:var(--text-dim); padding:7px 13px; font-size:12px; }
+  .layer-toggle button.active{ background:var(--current); color:var(--text); }
+  .plan-mode-chip{ display:flex; align-items:center; gap:8px; font-size:12px; color:var(--foam); background:rgba(168,230,232,0.08); padding:7px 12px; border-radius:100px; }
+  .plan-mode-chip .pdot{ width:6px; height:6px; border-radius:50%; background:var(--foam); }
+
+  /* ---- map ---- */
+  .mapstage{ grid-row:2; grid-column:2; position:relative; background:var(--abyss); overflow:hidden; }
+  #mapCanvas{ width:100%; height:100%; display:block; cursor:crosshair; }
+  .map-hint{ position:absolute; top:16px; left:16px; background:rgba(3,27,46,0.78); backdrop-filter:blur(6px); border:1px solid var(--line); border-radius:6px; padding:8px 13px; font-size:12px; color:var(--text-dim); max-width:300px; }
+  .map-legend{ position:absolute; bottom:16px; left:16px; background:rgba(3,27,46,0.78); backdrop-filter:blur(6px); border:1px solid var(--line); border-radius:6px; padding:10px 14px; }
+  .legend-bar{ width:170px; height:9px; border-radius:3px; margin-bottom:6px; }
+  .legend-labels{ display:flex; justify-content:space-between; font-size:10.5px; color:var(--text-dim-2); }
+  .demo-badge{ position:absolute; top:16px; right:16px; background:rgba(255,122,77,0.14); border:1px solid rgba(255,122,77,0.4); color:var(--coral); font-size:11px; padding:6px 11px; border-radius:100px; }
+  .route-legend{ position:absolute; bottom:16px; right:16px; background:rgba(3,27,46,0.78); backdrop-filter:blur(6px); border:1px solid var(--line); border-radius:6px; padding:10px 14px; font-size:11px; color:var(--text-dim); }
+  .route-legend div{ display:flex; align-items:center; gap:7px; margin-bottom:5px; }
+  .route-legend div:last-child{ margin-bottom:0; }
+  .route-legend .swatch{ width:16px; height:0; border-top:2.5px solid; }
+
+  /* ---- right panel ---- */
+  .panel{ grid-row:2; grid-column:3; background:var(--deep); border-left:1px solid var(--line); overflow-y:auto; padding:22px 20px 40px; }
+  .panel h2{ font-size:16px; margin-bottom:4px; }
+  .panel .sub{ font-size:12px; color:var(--text-dim-2); margin-bottom:18px; }
+  .panel-tabsheet{ display:none; } .panel-tabsheet.active{ display:block; }
+
+  .empty-state{ text-align:center; padding:54px 10px; color:var(--text-dim-2); font-size:12.5px; line-height:1.7; }
+  .empty-state svg{ width:32px; height:32px; margin-bottom:14px; color:var(--surface); opacity:0.6; }
+
+  .kpi-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:18px; }
+  .kpi-card{ background:var(--abyss); border:1px solid var(--line); border-radius:8px; padding:12px 13px; }
+  .kpi-card .kv{ font-size:19px; font-weight:600; font-family:'Space Grotesk',sans-serif; }
+  .kpi-card .kl{ font-size:10.5px; color:var(--text-dim-2); margin-top:3px; }
+  .kpi-card.wide{ grid-column:1/3; }
+  .kpi-card .kv.coral{ color:var(--coral); }
+  .kpi-card .kv.ok{ color:var(--ok); }
+
+  .metric-row{ display:flex; justify-content:space-between; padding:9px 0; border-bottom:1px solid var(--line); font-size:13px; }
+  .metric-row .k{ color:var(--text-dim); }
+  .metric-row .v{ color:var(--foam); }
+
+  .chart-box{ margin-bottom:22px; }
+  .chart-box .title{ font-size:12px; color:var(--text-dim); margin-bottom:10px; }
+  .chart-box svg{ width:100%; height:auto; }
+
+  .btn{ background:var(--current); border:none; color:var(--text); padding:9px 14px; border-radius:6px; font-size:12.5px; display:flex; align-items:center; gap:6px; justify-content:center; }
+  .btn:hover{ background:var(--surface); }
+  .btn.full{ width:100%; margin-bottom:10px; }
+  .btn.ghost{ background:none; border:1px solid var(--line); color:var(--text-dim); }
+  .btn.ghost:hover{ color:var(--text); border-color:var(--foam); }
+  .export-row{ display:flex; gap:8px; margin-top:6px; }
+  .export-row .btn{ flex:1; }
+
+  .flag-note{ display:flex; gap:9px; padding:11px 12px; background:rgba(232,180,77,0.1); border:1px solid rgba(232,180,77,0.3); border-radius:8px; margin-bottom:16px; }
+  .flag-note svg{ width:16px; height:16px; color:var(--amber); flex-shrink:0; margin-top:1px; }
+  .flag-note p{ font-size:11.5px; color:var(--text-dim); line-height:1.6; }
+
+  table.hist-table{ width:100%; border-collapse:collapse; font-size:12px; }
+  table.hist-table th{ text-align:left; color:var(--text-dim-2); font-weight:500; font-size:10.5px; padding:0 8px 8px 0; border-bottom:1px solid var(--line); letter-spacing:0.03em; }
+  table.hist-table td{ padding:9px 8px 9px 0; border-bottom:1px solid var(--line); color:var(--text-dim); }
+  table.hist-table tr:last-child td{ border-bottom:none; }
+  table.hist-table .rname{ color:var(--text); font-weight:500; }
+
+  ::-webkit-scrollbar{ width:8px; } ::-webkit-scrollbar-thumb{ background:var(--line); border-radius:4px; }
+</style>
+</head>
+<body>
+
+<div class="shell">
+
+  <aside class="sidebar">
+    <div class="mark">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M2 12c2 0 2-3 4-3s2 3 4 3 2-3 4-3 2 3 4 3 2-3 4-3 2 3 4 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      LEHER <span class="tag">INDUSTRY</span>
+    </div>
+    <div class="role-switch">
+      <div class="label">DASHBOARD</div>
+      <a class="role-pill" href="leher_researcher.html"><svg viewBox="0 0 24 24" fill="none"><circle cx="10" cy="10" r="6" stroke="currentColor" stroke-width="1.4"/><line x1="14.5" y1="14.5" x2="20" y2="20" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>Researcher</a>
+      <a class="role-pill" href="leher_defence.html"><svg viewBox="0 0 24 24" fill="none"><path d="M12 2 L20 5 V11 C20 16 16.5 19.5 12 22 C7.5 19.5 4 16 4 11 V5 L12 2Z" stroke="currentColor" stroke-width="1.4"/></svg>Defence</a>
+      <a class="role-pill" href="leher_coastal_desktop.html"><svg viewBox="0 0 24 24" fill="none"><path d="M7 14c1-4 3-8 5-10 2 2 4 6 5 10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>Coastal</a>
+      <a class="role-pill active" href="leher_industry.html"><svg viewBox="0 0 24 24" fill="none"><path d="M8 16V7l4-3 4 3v9" stroke="currentColor" stroke-width="1.4"/></svg>Industry</a>
+    </div>
+    <div class="section-nav">
+      <div class="label">TOOLS</div>
+      <button class="nav-item active" data-tab="route">Route Planner</button>
+      <button class="nav-item" data-tab="compare">Route Comparison</button>
+      <button class="nav-item" data-tab="overlay">Current &amp; Wind</button>
+      <button class="nav-item" data-tab="conditions">Conditions Along Route</button>
+      <button class="nav-item" data-tab="fleet">Fleet / History</button>
+    </div>
+    <div class="status-chip">
+      <div class="row1"><span class="dot"></span>Data current as of: <span class="num" id="dataDate">6 Sep 2026</span></div>
+      <div class="row2">Demo data — synthetic field for interaction preview. Connect the FastAPI layer for live OceanUNet output.</div>
+    </div>
+  </aside>
+
+  <div class="topbar">
+    <div class="plan-mode-chip"><span class="pdot"></span><span id="planModeLabel">Click the map to set an origin</span></div>
+    <div class="layer-toggle" id="layerToggle">
+      <button class="active" data-layer="none">NO OVERLAY</button>
+      <button data-layer="current">CURRENT</button>
+      <button data-layer="wind">WIND</button>
+      <button data-layer="both">BOTH</button>
+    </div>
+    <div class="tb-group" style="display:flex;align-items:center;gap:8px;">
+      <span class="tb-label">DATE</span>
+      <select class="tb-select" id="dateSelect">
+        <option>2026-09-06</option>
+        <option>2026-09-05</option>
+        <option>2026-09-04</option>
+      </select>
+    </div>
+  </div>
+
+  <main class="mapstage">
+    <canvas id="mapCanvas"></canvas>
+    <div class="map-hint" id="mapHint">Click to set an origin, then click again to set a destination.</div>
+    <div class="demo-badge">Synthetic demo field</div>
+    <div class="map-legend">
+      <div class="legend-bar" style="background:linear-gradient(90deg,#04304F,#0B5A7A,#1E96B0,#A8E6E8,#FF7A4D);"></div>
+      <div class="legend-labels"><span>cold</span><span>surface temperature</span><span>warm</span></div>
+    </div>
+    <div class="route-legend" id="routeLegend" style="display:none;">
+      <div><span class="swatch" style="border-color:#8FA3AE; border-top-style:dashed;"></span>Great-circle (naive)</div>
+      <div><span class="swatch" style="border-color:#A8E6E8;"></span>Current-optimized (illustrative)</div>
+    </div>
+  </main>
+
+  <aside class="panel">
+
+    <!-- Route Planner -->
+    <div class="panel-tabsheet active" id="tab-route">
+      <h2>Route Planner</h2>
+      <div class="sub">Set an origin and destination on the map to propose a route.</div>
+      <div class="flag-note">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 3 2 20h20L12 3Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><line x1="12" y1="9" x2="12" y2="14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="17" r="0.9" fill="currentColor"/></svg>
+        <p><b>Presentation layer, needs an engine.</b> Real optimization needs a routing graph combined with current/wind fields. This preview shows the concept with an illustrative bend toward favorable currents.</p>
+      </div>
+      <div id="routeEmpty" class="empty-state">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="6" cy="18" r="2" fill="currentColor"/><circle cx="18" cy="6" r="2" fill="currentColor"/><path d="M6 18 L18 6" stroke="currentColor" stroke-width="1.3" stroke-dasharray="3 3"/></svg>
+        No route set yet.
+      </div>
+      <div id="routeContent" style="display:none;">
+        <div class="metric-row"><span class="k">Origin</span><span class="v num" id="rOrigin">—</span></div>
+        <div class="metric-row"><span class="k">Destination</span><span class="v num" id="rDest">—</span></div>
+        <div class="metric-row"><span class="k">Great-circle distance</span><span class="v num" id="rDist">—</span></div>
+        <div class="metric-row"><span class="k">Est. transit (naive)</span><span class="v num" id="rTime">—</span></div>
+        <button class="btn ghost full" id="resetRoute" style="margin-top:16px;">Clear route</button>
+      </div>
+    </div>
+
+    <!-- Route Comparison -->
+    <div class="panel-tabsheet" id="tab-compare">
+      <h2>Route Comparison</h2>
+      <div class="sub">Optimized vs. naive great-circle route.</div>
+      <div id="compareEmpty" class="empty-state">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M4 18h16M4 18l4-8 4 4 4-10" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Set a route in Route Planner first.
+      </div>
+      <div id="compareContent" style="display:none;">
+        <div class="kpi-grid">
+          <div class="kpi-card"><div class="kv num" id="cStraight">—</div><div class="kl">Great-circle distance</div></div>
+          <div class="kpi-card"><div class="kv num" id="cOptim">—</div><div class="kl">Optimized distance</div></div>
+          <div class="kpi-card wide"><div class="kv num ok" id="cSaving">—</div><div class="kl">Est. transit time saved riding favorable currents — placeholder until the routing engine ships</div></div>
+        </div>
+        <div class="chart-box">
+          <div class="title">Both paths over the domain</div>
+          <svg id="compareSvg" viewBox="0 0 340 200"></svg>
+        </div>
+        <div class="export-row">
+          <button class="btn ghost" id="exportRouteCsv">Download route CSV</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Current & Wind overlay -->
+    <div class="panel-tabsheet" id="tab-overlay">
+      <h2>Current &amp; Wind Overlay</h2>
+      <div class="sub">Live vector field from the model's surface inputs — ships today, no routing engine needed.</div>
+      <div class="metric-row"><span class="k">Overlay shown</span><span class="v" id="ovLayerLabel">None</span></div>
+      <div class="metric-row"><span class="k">Source fields</span><span class="v">u, v, u_wnd, v_wnd</span></div>
+      <p style="font-size:11.5px; color:var(--text-dim-2); line-height:1.7; margin-top:14px;">Arrow direction shows flow direction; arrow length shows relative speed. Use the toggle in the top bar to switch between current, wind, or both.</p>
+      <div class="chart-box" style="margin-top:18px;">
+        <div class="title">Sample vector legend</div>
+        <svg viewBox="0 0 300 60" style="width:100%;">
+          <line x1="20" y1="30" x2="70" y2="30" stroke="#1E96B0" stroke-width="2"/><polygon points="70,30 62,26 62,34" fill="#1E96B0"/>
+          <text x="80" y="34" fill="#EAF6F6" font-size="11" opacity="0.7">Current</text>
+          <line x1="160" y1="30" x2="210" y2="30" stroke="#EAF6F6" stroke-width="2" opacity="0.7"/><polygon points="210,30 202,26 202,34" fill="#EAF6F6" opacity="0.7"/>
+          <text x="220" y="34" fill="#EAF6F6" font-size="11" opacity="0.7">Wind</text>
+        </svg>
+      </div>
+    </div>
+
+    <!-- Conditions along route -->
+    <div class="panel-tabsheet" id="tab-conditions">
+      <h2>Conditions Along Route</h2>
+      <div class="sub">What operators sail into, sampled along the planned path.</div>
+      <div id="condEmpty" class="empty-state">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M3 12h4l2-6 4 12 2-6h6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Set a route to see the strip chart.
+      </div>
+      <div id="condContent" style="display:none;">
+        <div class="chart-box">
+          <div class="title">Sea surface temperature along route (°C)</div>
+          <svg id="sstSvg" viewBox="0 0 300 140"></svg>
+        </div>
+        <div class="chart-box">
+          <div class="title">Current speed along route (m/s)</div>
+          <svg id="curSvg" viewBox="0 0 300 140"></svg>
+        </div>
+        <div class="chart-box">
+          <div class="title">Wind speed along route (m/s)</div>
+          <svg id="windSvg" viewBox="0 0 300 140"></svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- Fleet / History -->
+    <div class="panel-tabsheet" id="tab-fleet">
+      <h2>Fleet / History</h2>
+      <div class="sub">Saved routes for this account.</div>
+      <table class="hist-table" id="fleetTable">
+        <thead><tr><th>Route</th><th>Distance</th><th>Planned</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="export-row" style="margin-top:16px;">
+        <button class="btn ghost" id="exportFleetCsv">Export CSV</button>
+        <button class="btn ghost" id="exportFleetPdf">Export report (PDF)</button>
+      </div>
+    </div>
+
+  </aside>
+
+</div>
+
+<script>
+/* ================= field engine (consistent with Researcher/Defence) ================= */
+const LAT_MIN=5, LAT_MAX=30, LON_MIN=45, LON_MAX=105;
+function tempAt(lat,lon){
+  const latN=(lat-LAT_MIN)/(LAT_MAX-LAT_MIN), lonN=(lon-LON_MIN)/(LON_MAX-LON_MIN);
+  const base = 27.5 - 3.2*latN + 1.8*Math.sin(lonN*6.2+latN*2.4) + 0.8*Math.cos(lonN*3.1);
+  const noise = Math.sin(lat*1.1)*Math.cos(lon*0.8)*0.9;
+  return base+noise;
+}
+function currentVec(lat,lon){
+  const latN=(lat-LAT_MIN)/(LAT_MAX-LAT_MIN), lonN=(lon-LON_MIN)/(LON_MAX-LON_MIN);
+  const u = 0.5*Math.sin(lonN*5+latN*3) + 0.2*Math.cos(latN*7);
+  const v = 0.4*Math.cos(lonN*4-latN*2) + 0.15*Math.sin(lonN*2);
+  return [u,v];
+}
+function windVec(lat,lon){
+  const latN=(lat-LAT_MIN)/(LAT_MAX-LAT_MIN), lonN=(lon-LON_MIN)/(LON_MAX-LON_MIN);
+  const u = 3.5*Math.cos(lonN*3-latN*1.5) + 1.2*Math.sin(latN*4);
+  const v = 2.8*Math.sin(lonN*2.4+latN*2.2);
+  return [u,v];
+}
+function colormap(t){
+  const stops=[[4,48,79],[11,90,122],[30,150,176],[168,230,232],[255,122,77]];
+  const seg=Math.min(3,Math.floor(t*4)); const localT=t*4-seg;
+  const a=stops[seg], b=stops[seg+1];
+  return `rgb(${Math.round(a[0]+(b[0]-a[0])*localT)},${Math.round(a[1]+(b[1]-a[1])*localT)},${Math.round(a[2]+(b[2]-a[2])*localT)})`;
+}
+const TMIN=2, TMAX=30;
+
+/* ================= state ================= */
+let overlayMode = 'none'; // none | current | wind | both
+let origin = null, destination = null;
+const canvas = document.getElementById('mapCanvas');
+const ctx = canvas.getContext('2d');
+
+function resizeCanvas(){
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width; canvas.height = rect.height;
+  drawMap();
+}
+function pxToLatLon(px,py){
+  return [LAT_MAX-(py/canvas.height)*(LAT_MAX-LAT_MIN), LON_MIN+(px/canvas.width)*(LON_MAX-LON_MIN)];
+}
+function latLonToPx(lat,lon){
+  return [((lon-LON_MIN)/(LON_MAX-LON_MIN))*canvas.width, ((LAT_MAX-lat)/(LAT_MAX-LAT_MIN))*canvas.height];
+}
+function haversineKm(a,b){
+  const R=6371, toRad=d=>d*Math.PI/180;
+  const dLat=toRad(b[0]-a[0]), dLon=toRad(b[1]-a[1]);
+  const s = Math.sin(dLat/2)**2 + Math.cos(toRad(a[0]))*Math.cos(toRad(b[0]))*Math.sin(dLon/2)**2;
+  return R*2*Math.atan2(Math.sqrt(s), Math.sqrt(1-s));
+}
+
+function drawMap(){
+  if(!canvas.width) return;
+  const cell=9;
+  for(let py=0; py<canvas.height; py+=cell){
+    for(let px=0; px<canvas.width; px+=cell){
+      const [lat,lon] = pxToLatLon(px+cell/2, py+cell/2);
+      const norm = Math.max(0, Math.min(1, (tempAt(lat,lon)-TMIN)/(TMAX-TMIN)));
+      ctx.fillStyle = colormap(norm);
+      ctx.fillRect(px,py,cell+1,cell+1);
+    }
+  }
+  if(overlayMode!=='none') drawVectorField();
+  if(origin) drawMarker(origin, '#A8E6E8', 'O');
+  if(destination) drawMarker(destination, '#FF7A4D', 'D');
+  if(origin && destination) drawRoutes();
+}
+
+function drawVectorField(){
+  const gap = 46;
+  for(let py=gap/2; py<canvas.height; py+=gap){
+    for(let px=gap/2; px<canvas.width; px+=gap){
+      const [lat,lon] = pxToLatLon(px,py);
+      let u=0,v=0, color='';
+      if(overlayMode==='current' || overlayMode==='both'){
+        const c = currentVec(lat,lon); u+=c[0]; v+=c[1]; color = 'rgba(30,150,176,0.9)';
+      }
+      if(overlayMode==='wind'){
+        const w = windVec(lat,lon); u=w[0]/5; v=w[1]/5; color='rgba(234,246,246,0.75)';
+      }
+      if(overlayMode==='both'){
+        const w = windVec(lat,lon);
+        drawArrow(px,py,w[0]/5,-w[1]/5,'rgba(234,246,246,0.5)',14);
+      }
+      drawArrow(px,py,u,-v,color,14);
+    }
+  }
+}
+function drawArrow(px,py,u,v,color,scale){
+  const len = Math.min(scale, Math.hypot(u,v)*scale*0.9 + 4);
+  const ang = Math.atan2(v,u);
+  const ex = px+Math.cos(ang)*len, ey = py+Math.sin(ang)*len;
+  ctx.strokeStyle = color; ctx.lineWidth=1.4;
+  ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(ex,ey); ctx.stroke();
+  ctx.save(); ctx.translate(ex,ey); ctx.rotate(ang);
+  ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(-4,-2.5); ctx.lineTo(-4,2.5); ctx.closePath();
+  ctx.fillStyle = color; ctx.fill(); ctx.restore();
+}
+function drawMarker(pt,color,label){
+  const [px,py] = latLonToPx(pt[0],pt[1]);
+  ctx.beginPath(); ctx.arc(px,py,7,0,Math.PI*2); ctx.fillStyle=color; ctx.fill();
+  ctx.strokeStyle='#031B2E'; ctx.lineWidth=1.6; ctx.stroke();
+  ctx.fillStyle='#031B2E'; ctx.font='bold 9px IBM Plex Sans'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(label, px, py);
+}
+function drawRoutes(){
+  const [ox,oy] = latLonToPx(origin[0],origin[1]);
+  const [dx,dy] = latLonToPx(destination[0],destination[1]);
+  // naive great-circle (straight line here, in screen space)
+  ctx.setLineDash([6,5]);
+  ctx.strokeStyle = '#8FA3AE'; ctx.lineWidth=1.6;
+  ctx.beginPath(); ctx.moveTo(ox,oy); ctx.lineTo(dx,dy); ctx.stroke();
+  ctx.setLineDash([]);
+  // illustrative "optimized" bend toward favorable current midpoint
+  const midLat=(origin[0]+destination[0])/2, midLon=(origin[1]+destination[1])/2;
+  const cvec = currentVec(midLat,midLon);
+  const bendPx = cvec[0]*40, bendPy = -cvec[1]*40;
+  const cx = (ox+dx)/2 + bendPx, cy = (oy+dy)/2 + bendPy;
+  ctx.strokeStyle = '#A8E6E8'; ctx.lineWidth=2.4;
+  ctx.beginPath(); ctx.moveTo(ox,oy); ctx.quadraticCurveTo(cx,cy,dx,dy); ctx.stroke();
+}
+
+/* ================= interactions ================= */
+canvas.addEventListener('click', (e)=>{
+  const rect = canvas.getBoundingClientRect();
+  const pt = pxToLatLon(e.clientX-rect.left, e.clientY-rect.top);
+  if(!origin){ origin = pt; }
+  else if(!destination){ destination = pt; }
+  else { origin = pt; destination = null; }
+  updatePlanMode();
+  drawMap();
+  if(origin && destination){ renderRoute(); renderCompare(); renderConditions(); }
+});
+document.getElementById('resetRoute').addEventListener('click', ()=>{
+  origin=null; destination=null;
+  document.getElementById('routeEmpty').style.display='block';
+  document.getElementById('routeContent').style.display='none';
+  document.getElementById('compareEmpty').style.display='block';
+  document.getElementById('compareContent').style.display='none';
+  document.getElementById('condEmpty').style.display='block';
+  document.getElementById('condContent').style.display='none';
+  document.getElementById('routeLegend').style.display='none';
+  updatePlanMode(); drawMap();
+});
+function updatePlanMode(){
+  const label = document.getElementById('planModeLabel');
+  if(!origin) label.textContent='Click the map to set an origin';
+  else if(!destination) label.textContent='Now click to set a destination';
+  else label.textContent='Route set — click again to start a new one';
+  document.getElementById('routeLegend').style.display = (origin&&destination) ? 'flex' : 'none';
+}
+
+function renderRoute(){
+  document.getElementById('routeEmpty').style.display='none';
+  document.getElementById('routeContent').style.display='block';
+  document.getElementById('rOrigin').textContent = `${origin[0].toFixed(1)}N ${origin[1].toFixed(1)}E`;
+  document.getElementById('rDest').textContent = `${destination[0].toFixed(1)}N ${destination[1].toFixed(1)}E`;
+  const dist = haversineKm(origin,destination);
+  document.getElementById('rDist').textContent = Math.round(dist).toLocaleString()+' km';
+  document.getElementById('rTime').textContent = (dist/(18*1.852)).toFixed(1)+' hrs @ 18kn';
+}
+
+function renderCompare(){
+  document.getElementById('compareEmpty').style.display='none';
+  document.getElementById('compareContent').style.display='block';
+  const straight = haversineKm(origin,destination);
+  // illustrative optimized distance: slightly longer path, framed as time-saved not distance-saved
+  const optim = straight * 1.03;
+  const savingPct = (3 + Math.random()*4).toFixed(1);
+  document.getElementById('cStraight').textContent = Math.round(straight).toLocaleString()+' km';
+  document.getElementById('cOptim').textContent = Math.round(optim).toLocaleString()+' km';
+  document.getElementById('cSaving').textContent = '~'+savingPct+'% shorter transit time';
+
+  const svg = document.getElementById('compareSvg');
+  const W=340,H=200,pad=20;
+  const lon2x = lon => pad + ((lon-LON_MIN)/(LON_MAX-LON_MIN))*(W-2*pad);
+  const lat2y = lat => pad + ((LAT_MAX-lat)/(LAT_MAX-LAT_MIN))*(H-2*pad);
+  const ox=lon2x(origin[1]), oy=lat2y(origin[0]), dx=lon2x(destination[1]), dy=lat2y(destination[0]);
+  const cx=(ox+dx)/2+10, cy=(oy+dy)/2-14;
+  svg.innerHTML = `
+    <rect x="0" y="0" width="${W}" height="${H}" fill="#031B2E"/>
+    <line x1="${ox}" y1="${oy}" x2="${dx}" y2="${dy}" stroke="#8FA3AE" stroke-width="1.6" stroke-dasharray="5 4"/>
+    <path d="M${ox},${oy} Q${cx},${cy} ${dx},${dy}" fill="none" stroke="#A8E6E8" stroke-width="2.2"/>
+    <circle cx="${ox}" cy="${oy}" r="4.5" fill="#A8E6E8"/>
+    <circle cx="${dx}" cy="${dy}" r="4.5" fill="#FF7A4D"/>
+  `;
+}
+
+function renderConditions(){
+  document.getElementById('condEmpty').style.display='none';
+  document.getElementById('condContent').style.display='block';
+  const N=20;
+  const pts = [];
+  for(let i=0;i<=N;i++){
+    const f=i/N;
+    pts.push([origin[0]+(destination[0]-origin[0])*f, origin[1]+(destination[1]-origin[1])*f]);
+  }
+  const sst = pts.map(p=>tempAt(p[0],p[1]));
+  const cur = pts.map(p=>Math.hypot(...currentVec(p[0],p[1])));
+  const wnd = pts.map(p=>Math.hypot(...windVec(p[0],p[1])));
+  drawStrip('sstSvg', sst, '#FF7A4D', v=>v.toFixed(1));
+  drawStrip('curSvg', cur, '#1E96B0', v=>v.toFixed(2));
+  drawStrip('windSvg', wnd, '#A8E6E8', v=>v.toFixed(1));
+}
+function drawStrip(id, ys, color, fmt){
+  const svg = document.getElementById(id);
+  const W=300,H=140,padL=32,padR=10,padT=10,padB=18;
+  const yMin=Math.min(...ys), yMax=Math.max(...ys);
+  const x = i => padL + (i/(ys.length-1))*(W-padL-padR);
+  const y = v => padT + (1-(v-yMin)/((yMax-yMin)||1))*(H-padT-padB);
+  const path = ys.map((v,i)=>`${i===0?'M':'L'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+  svg.innerHTML = `
+    <line x1="${padL}" y1="${H-padB}" x2="${W-padR}" y2="${H-padB}" stroke="rgba(234,246,246,0.2)"/>
+    <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${H-padB}" stroke="rgba(234,246,246,0.2)"/>
+    <path d="${path}" fill="none" stroke="${color}" stroke-width="2"/>
+    <text x="2" y="${padT+8}" font-size="9" fill="rgba(234,246,246,0.4)">${fmt(yMax)}</text>
+    <text x="2" y="${H-padB}" font-size="9" fill="rgba(234,246,246,0.4)">${fmt(yMin)}</text>
+    <text x="${padL}" y="${H-4}" font-size="9" fill="rgba(234,246,246,0.4)">origin</text>
+    <text x="${W-padR-30}" y="${H-4}" font-size="9" fill="rgba(234,246,246,0.4)">destination</text>
+  `;
+}
+
+/* ================= layer toggle ================= */
+document.getElementById('layerToggle').addEventListener('click', (e)=>{
+  const btn = e.target.closest('button'); if(!btn) return;
+  document.querySelectorAll('#layerToggle button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  overlayMode = btn.dataset.layer;
+  document.getElementById('ovLayerLabel').textContent =
+    overlayMode==='none' ? 'None' : overlayMode==='current' ? 'Current' : overlayMode==='wind' ? 'Wind' : 'Current + Wind';
+  drawMap();
+});
+
+/* ================= tab switching ================= */
+document.querySelectorAll('.nav-item').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.nav-item').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.panel-tabsheet').forEach(s=>s.classList.remove('active'));
+    document.getElementById('tab-'+btn.dataset.tab).classList.add('active');
+  });
+});
+
+/* ================= fleet / history (mock saved routes) ================= */
+const FLEET = [
+  {name:'Mumbai → Kochi', dist:'620 km', date:'2026-09-02'},
+  {name:'Chennai → Colombo', dist:'410 km', date:'2026-08-28'},
+  {name:'Visakhapatnam → Kolkata', dist:'560 km', date:'2026-08-21'},
+];
+document.querySelector('#fleetTable tbody').innerHTML = FLEET.map(r=>
+  `<tr><td class="rname">${r.name}</td><td class="num">${r.dist}</td><td class="num">${r.date}</td></tr>`).join('');
+
+function downloadFile(name, content, type='text/csv'){
+  const blob = new Blob([content], {type});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download=name; a.click();
+  URL.revokeObjectURL(url);
+}
+document.getElementById('exportRouteCsv').addEventListener('click', ()=>{
+  if(!origin||!destination) return;
+  const csv = 'lat,lon\n'+`${origin[0]},${origin[1]}\n${destination[0]},${destination[1]}`;
+  downloadFile('route_demo.csv', csv);
+});
+document.getElementById('exportFleetCsv').addEventListener('click', ()=>{
+  const csv = 'route,distance,date\n'+FLEET.map(r=>`${r.name},${r.dist},${r.date}`).join('\n');
+  downloadFile('fleet_history_demo.csv', csv);
+});
+document.getElementById('exportFleetPdf').addEventListener('click', ()=>{
+  downloadFile('fleet_report_demo.txt', 'PDF export placeholder — wire up a real report generator server-side.', 'text/plain');
+});
+
+/* ================= init ================= */
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+updatePlanMode();
+</script>
+
+</body>
+</html>

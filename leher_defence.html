@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LEHER — Defence Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --abyss:#020F1A; --deep:#04304F; --current:#0B5A7A; --surface:#1E96B0;
+    --foam:#A8E6E8; --coral:#FF7A4D; --amber:#E8B44D; --ok:#5FD8A0;
+    --text:#EAF6F6; --text-dim:rgba(234,246,246,0.6); --text-dim-2:rgba(234,246,246,0.36);
+    --line:rgba(234,246,246,0.14);
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{
+    background:var(--abyss); color:var(--text); font-family:'IBM Plex Sans',sans-serif;
+    font-size:13.5px; height:100vh; overflow:hidden;
+  }
+  h1,h2,h3,.display{ font-family:'Space Grotesk',sans-serif; font-weight:600; }
+  .num, .mono{ font-family:'IBM Plex Mono',monospace; font-variant-numeric: tabular-nums; }
+  button{ font-family:inherit; cursor:pointer; }
+  select{ font-family:inherit; }
+
+  .shell{ display:grid; grid-template-columns:224px 1fr 340px; grid-template-rows:56px 1fr; height:100vh; }
+
+  /* sidebar */
+  .sidebar{
+    grid-row:1/3; grid-column:1; background:#03121F; border-right:1px solid var(--line);
+    display:flex; flex-direction:column; padding:18px 14px;
+  }
+  .mark{ display:flex; align-items:center; gap:8px; font-weight:700; font-size:15px; margin-bottom:22px; padding:0 4px; letter-spacing:0.02em; }
+  .mark svg{ width:16px; height:16px; color:var(--foam); }
+  .mark .tag{ font-size:10px; color:var(--text-dim-2); border:1px solid var(--line); padding:1px 6px; border-radius:2px; margin-left:auto; }
+
+  .role-switch{ display:flex; flex-direction:column; gap:3px; margin-bottom:22px; }
+  .label{ font-size:10px; color:var(--text-dim-2); padding:0 4px 6px; letter-spacing:0.06em; }
+  .role-pill{
+    display:flex; align-items:center; gap:8px; padding:8px 9px; border-radius:2px;
+    font-size:12.5px; color:var(--text-dim); text-decoration:none;
+  }
+  .role-pill.active{ background:rgba(234,246,246,0.08); color:var(--foam); border-left:2px solid var(--foam); }
+  .role-pill:hover{ background:rgba(234,246,246,0.05); color:var(--text); }
+  .role-pill svg{ width:14px; height:14px; flex-shrink:0; }
+
+  .section-nav{ display:flex; flex-direction:column; gap:2px; flex-grow:1; }
+  .nav-item{
+    padding:9px 9px; border-radius:2px; font-size:12.5px; color:var(--text-dim);
+    background:none; border:none; text-align:left; width:100%;
+  }
+  .nav-item.active{ background:var(--current); color:var(--text); }
+  .nav-item:hover:not(.active){ background:rgba(234,246,246,0.05); color:var(--text); }
+
+  .status-chip{ margin-top:auto; padding:11px; border-radius:2px; background:#03121F; border:1px solid var(--line); }
+  .status-chip .row1{ font-size:11px; color:var(--text-dim); margin-bottom:5px; display:flex; align-items:center; gap:6px; }
+  .status-chip .dot{ width:5px; height:5px; background:var(--ok); border-radius:50%; }
+  .status-chip .row2{ font-size:10px; color:var(--text-dim-2); line-height:1.5; }
+
+  /* topbar */
+  .topbar{
+    grid-row:1; grid-column:2/4; background:var(--abyss); border-bottom:1px solid var(--line);
+    display:flex; align-items:center; gap:18px; padding:0 20px;
+  }
+  .tb-label{ font-size:10px; color:var(--text-dim-2); letter-spacing:0.05em; }
+  .preset-row{ display:flex; gap:4px; }
+  .preset-btn{
+    background:#03121F; border:1px solid var(--line); color:var(--text-dim); padding:6px 11px;
+    border-radius:2px; font-size:11.5px;
+  }
+  .preset-btn.active{ background:var(--current); border-color:var(--current); color:var(--text); }
+  .preset-btn:disabled{ opacity:0.3; cursor:not-allowed; }
+  .layer-toggle{ display:flex; border:1px solid var(--line); border-radius:2px; overflow:hidden; margin-left:auto; }
+  .layer-toggle button{ background:#03121F; border:none; color:var(--text-dim); padding:7px 13px; font-size:11.5px; }
+  .layer-toggle button.active{ background:var(--foam); color:var(--abyss); font-weight:600; }
+  .tb-select{ background:#03121F; color:var(--text); border:1px solid var(--line); padding:6px 9px; border-radius:2px; font-size:12px; }
+
+  /* map */
+  .mapstage{ grid-row:2; grid-column:2; position:relative; background:var(--abyss); overflow:hidden; }
+  #mapCanvas{ width:100%; height:100%; display:block; cursor:crosshair; }
+  .map-hint{
+    position:absolute; top:14px; left:14px; background:rgba(2,15,26,0.85); border:1px solid var(--line);
+    border-radius:2px; padding:7px 12px; font-size:11.5px; color:var(--text-dim); max-width:300px;
+  }
+  .confidence-badge{
+    position:absolute; top:14px; right:14px; border-radius:2px; padding:8px 13px;
+    border:1px solid var(--line); background:rgba(2,15,26,0.85); text-align:right;
+  }
+  .confidence-badge .cb-label{ font-size:9.5px; color:var(--text-dim-2); letter-spacing:0.05em; margin-bottom:3px; }
+  .confidence-badge .cb-value{ font-size:13px; font-weight:600; }
+  .map-legend{
+    position:absolute; bottom:14px; left:14px; background:rgba(2,15,26,0.85); border:1px solid var(--line);
+    border-radius:2px; padding:9px 13px;
+  }
+  .legend-bar{ width:170px; height:8px; margin-bottom:5px; }
+  .legend-labels{ display:flex; justify-content:space-between; font-size:10px; color:var(--text-dim-2); }
+  .demo-badge{
+    position:absolute; bottom:14px; right:14px; background:rgba(255,122,77,0.12); border:1px solid rgba(255,122,77,0.4);
+    color:var(--coral); font-size:10.5px; padding:5px 10px; border-radius:2px;
+  }
+
+  /* panel */
+  .panel{ grid-row:2; grid-column:3; background:#03121F; border-left:1px solid var(--line); overflow-y:auto; padding:20px 18px 40px; }
+  .panel h2{ font-size:14.5px; margin-bottom:3px; letter-spacing:0.01em; }
+  .panel .sub{ font-size:11.5px; color:var(--text-dim-2); margin-bottom:18px; }
+  .panel-tabsheet{ display:none; } .panel-tabsheet.active{ display:block; }
+
+  .empty-state{ text-align:center; padding:50px 8px; color:var(--text-dim-2); font-size:12px; line-height:1.7; }
+  .empty-state svg{ width:28px; height:28px; margin-bottom:12px; color:var(--surface); opacity:0.5; }
+
+  .readout-card{ border:1px solid var(--line); border-radius:2px; padding:14px; margin-bottom:14px; }
+  .readout-card .rc-title{ font-size:10.5px; color:var(--text-dim-2); letter-spacing:0.05em; margin-bottom:10px; }
+  .readout-row{ display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px solid var(--line); font-size:12.5px; }
+  .readout-row:last-child{ border-bottom:none; }
+  .readout-row .k{ color:var(--text-dim); }
+  .readout-row .v{ color:var(--foam); font-weight:600; }
+  .readout-row .v.conf-high{ color:var(--ok); }
+  .readout-row .v.conf-med{ color:var(--amber); }
+  .readout-row .v.conf-low{ color:var(--coral); }
+
+  .sparkline-box{ margin-top:4px; }
+  .sparkline-box svg{ width:100%; height:auto; }
+
+  .hist-controls{ display:flex; flex-direction:column; gap:10px; margin-bottom:18px; }
+  .hist-select-row{ display:flex; align-items:center; gap:8px; }
+  .hist-select-row .swatch{ width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+  .hist-select-row select{ flex-grow:1; }
+
+  .slider-row{ display:flex; align-items:center; gap:10px; margin-top:6px; }
+  .slider-row input[type=range]{ flex-grow:1; accent-color:var(--foam); }
+
+  .btn{
+    background:var(--current); border:none; color:var(--text); padding:8px 13px; border-radius:2px; font-size:12px;
+    width:100%; margin-top:6px;
+  }
+  .btn:hover{ background:var(--surface); }
+
+  ::-webkit-scrollbar{ width:7px; } ::-webkit-scrollbar-thumb{ background:var(--line); }
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <aside class="sidebar">
+    <div class="mark">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M2 12c2 0 2-3 4-3s2 3 4 3 2-3 4-3 2 3 4 3 2-3 4-3 2 3 4 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      LEHER <span class="tag">DEFENCE</span>
+    </div>
+    <div class="role-switch">
+      <div class="label">DASHBOARD</div>
+      <a class="role-pill" href="leher_researcher.html"><svg viewBox="0 0 24 24" fill="none"><circle cx="10" cy="10" r="6" stroke="currentColor" stroke-width="1.4"/></svg>Researcher</a>
+      <a class="role-pill active" href="leher_defence.html"><svg viewBox="0 0 24 24" fill="none"><path d="M12 2 L20 5 V11 C20 16 16.5 19.5 12 22 C7.5 19.5 4 16 4 11 V5 L12 2Z" stroke="currentColor" stroke-width="1.4"/></svg>Defence</a>
+      <a class="role-pill" href="leher_coastal_desktop.html"><svg viewBox="0 0 24 24" fill="none"><path d="M7 14c1-4 3-8 5-10 2 2 4 6 5 10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>Coastal</a>
+      <a class="role-pill" href="leher_industry.html"><svg viewBox="0 0 24 24" fill="none"><path d="M8 16V7l4-3 4 3v9" stroke="currentColor" stroke-width="1.4"/></svg>Industry</a>
+    </div>
+    <div class="section-nav">
+      <div class="label">VIEWS</div>
+      <button class="nav-item active" data-tab="query">Point Query</button>
+      <button class="nav-item" data-tab="history">Historical Comparison</button>
+    </div>
+    <div class="status-chip">
+      <div class="row1"><span class="dot"></span>DATA CURRENT: <span class="num" id="dataDate">2026-09-06</span></div>
+      <div class="row2">Synthetic demo field — not live model output.</div>
+    </div>
+  </aside>
+
+  <div class="topbar">
+    <span class="tb-label">DEPTH</span>
+    <div class="preset-row" id="presetRow">
+      <button class="preset-btn active" data-preset="0">SURFACE</button>
+      <button class="preset-btn" data-preset="50">50M</button>
+      <button class="preset-btn" data-preset="100">100M</button>
+      <button class="preset-btn" data-preset="thermo">THERMOCLINE</button>
+      <button class="preset-btn" data-preset="300">300M</button>
+      <button class="preset-btn" data-preset="900">DEEP</button>
+    </div>
+    <div class="layer-toggle" id="layerToggle">
+      <button class="active" data-layer="temp">TEMPERATURE LAYER</button>
+      <button data-layer="thermo">THERMOCLINE DEPTH LAYER</button>
+    </div>
+  </div>
+
+  <main class="mapstage">
+    <canvas id="mapCanvas"></canvas>
+    <div class="map-hint" id="mapHint">Click any point on the domain for a full readout — depth profile, thermocline, confidence.</div>
+    <div class="confidence-badge">
+      <div class="cb-label">MODEL CONFIDENCE, THIS LAYER</div>
+      <div class="cb-value" id="confBadge" style="color:var(--ok);">HIGH</div>
+    </div>
+    <div class="map-legend">
+      <svg class="legend-bar" id="legendBar" viewBox="0 0 170 8"></svg>
+      <div class="legend-labels"><span id="legendLo">cold</span><span id="legendHi">warm</span></div>
+    </div>
+    <div class="demo-badge">SYNTHETIC DEMO FIELD</div>
+  </main>
+
+  <aside class="panel">
+    <div class="panel-tabsheet active" id="tab-query">
+      <h2>Point Query</h2>
+      <div class="sub">Click the map for a compact conditions readout.</div>
+      <div id="queryEmpty" class="empty-state">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.3"/><line x1="12" y1="3" x2="12" y2="7" stroke="currentColor" stroke-width="1.3"/><line x1="12" y1="17" x2="12" y2="21" stroke="currentColor" stroke-width="1.3"/></svg>
+        No point selected.
+      </div>
+      <div id="queryContent" style="display:none;">
+        <div class="readout-card">
+          <div class="rc-title">SUBSURFACE CONDITIONS</div>
+          <div class="readout-row"><span class="k">Position</span><span class="v mono" id="qPos">—</span></div>
+          <div class="readout-row"><span class="k">Surface temp</span><span class="v mono" id="qSurf">—</span></div>
+          <div class="readout-row"><span class="k">Thermocline depth</span><span class="v mono" id="qThermo">—</span></div>
+          <div class="readout-row"><span class="k">Confidence, this depth</span><span class="v mono" id="qConf">—</span></div>
+        </div>
+        <div class="readout-card">
+          <div class="rc-title">DEPTH PROFILE</div>
+          <div class="sparkline-box"><svg id="sparkSvg" viewBox="0 0 300 140"></svg></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel-tabsheet" id="tab-history">
+      <h2>Historical Comparison</h2>
+      <div class="sub">Compare subsurface structure between two dates at the current depth.</div>
+      <div class="hist-controls">
+        <div class="hist-select-row">
+          <span class="swatch" style="background:var(--foam);"></span>
+          <select class="tb-select" id="dateA" style="width:100%;">
+            <option value="0">2026-09-06</option>
+            <option value="-3">2026-09-03</option>
+            <option value="-7">2026-08-30</option>
+            <option value="-14">2026-08-23</option>
+          </select>
+        </div>
+        <div class="hist-select-row">
+          <span class="swatch" style="background:var(--coral);"></span>
+          <select class="tb-select" id="dateB" style="width:100%;">
+            <option value="-14">2026-08-23</option>
+            <option value="-7">2026-08-30</option>
+            <option value="-3">2026-09-03</option>
+            <option value="0" selected>2026-09-06</option>
+          </select>
+        </div>
+      </div>
+      <div class="rc-title" style="margin-bottom:8px;">SPLIT VIEW — DRAG TO COMPARE</div>
+      <div class="slider-row">
+        <span class="mono" style="font-size:10px; color:var(--foam);">A</span>
+        <input type="range" id="splitSlider" min="0" max="100" value="50">
+        <span class="mono" style="font-size:10px; color:var(--coral);">B</span>
+      </div>
+      <p style="font-size:11px; color:var(--text-dim-2); margin-top:14px; line-height:1.6;">Drag the divider on the map to reveal date A (left, foam marker) against date B (right, coral marker) at the current depth layer.</p>
+    </div>
+  </aside>
+</div>
+
+<script>
+/* ===== shared field engine (same as Researcher) ===== */
+const LAT_MIN=5, LAT_MAX=30, LON_MIN=45, LON_MAX=105;
+const DEPTHS35 = (()=>{ const d=[]; for(let i=0;i<34;i++){ d.push(+(0.5+Math.pow(i,1.9)*0.72).toFixed(1)); } d.push(902.3); return d; })();
+
+function tempProfileFactor(depth){
+  if(depth<=50) return 1-0.05*(depth/50);
+  if(depth<=300) return 0.95-0.63*((depth-50)/250);
+  return 0.30*Math.exp(-(depth-300)/420);
+}
+function tempAt(lat,lon,depth,dateOffset=0){
+  const latN=(lat-LAT_MIN)/(LAT_MAX-LAT_MIN), lonN=(lon-LON_MIN)/(LON_MAX-LON_MIN);
+  const seasonal = Math.sin(dateOffset*0.18)*0.6; // demo-only date perturbation
+  const base = 27.5 - 3.2*latN + 1.8*Math.sin(lonN*6.2+latN*2.4) + 0.8*Math.cos(lonN*3.1) + seasonal;
+  const noise = Math.sin(lat*1.1)*Math.cos(lon*0.8)*0.9;
+  const surfaceTemp = base+noise;
+  const f = tempProfileFactor(depth);
+  return 3.5 + (surfaceTemp-3.5)*f;
+}
+function thermoclineDepth(lat,lon,dateOffset=0){
+  let maxGrad=-Infinity, bestDepth=DEPTHS35[10];
+  for(let i=1;i<DEPTHS35.length;i++){
+    const d0=DEPTHS35[i-1], d1=DEPTHS35[i];
+    const grad = Math.abs(tempAt(lat,lon,d1,dateOffset)-tempAt(lat,lon,d0,dateOffset))/(d1-d0);
+    if(grad>maxGrad){ maxGrad=grad; bestDepth=(d0+d1)/2; }
+  }
+  return bestDepth;
+}
+function confidenceAt(depth){
+  const rmse = 0.35 + 0.9*Math.max(0,(1-tempProfileFactor(depth)))*(depth<400?1:0.5)+0.05;
+  if(rmse<0.6) return {tier:'HIGH', color:'#5FD8A0'};
+  if(rmse<1.0) return {tier:'MEDIUM', color:'#E8B44D'};
+  return {tier:'LOW', color:'#FF7A4D'};
+}
+function colormap(t){
+  const stops=[[3,27,46],[11,90,122],[30,150,176],[168,230,232],[255,122,77]];
+  const seg=Math.min(3,Math.floor(t*4)); const localT=t*4-seg;
+  const a=stops[seg], b=stops[seg+1];
+  return `rgb(${Math.round(a[0]+(b[0]-a[0])*localT)},${Math.round(a[1]+(b[1]-a[1])*localT)},${Math.round(a[2]+(b[2]-a[2])*localT)})`;
+}
+function thermoColormap(t){ // shallow = foam, deep = abyss (reversed depth scale)
+  const stops=[[168,230,232],[30,150,176],[11,90,122],[4,48,79],[2,15,26]];
+  const seg=Math.min(3,Math.floor(t*4)); const localT=t*4-seg;
+  const a=stops[seg], b=stops[seg+1];
+  return `rgb(${Math.round(a[0]+(b[0]-a[0])*localT)},${Math.round(a[1]+(b[1]-a[1])*localT)},${Math.round(a[2]+(b[2]-a[2])*localT)})`;
+}
+
+/* ===== state ===== */
+let currentDepth = 0.5;
+let currentLayer = 'temp'; // 'temp' | 'thermo'
+let activeTab = 'query';
+let queryPoint = null;
+let splitPct = 50;
+const canvas = document.getElementById('mapCanvas');
+const ctx = canvas.getContext('2d');
+const TMIN=2, TMAX=30;
+const THMIN=20, THMAX=350;
+
+function resizeCanvas(){
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width=rect.width; canvas.height=rect.height;
+  drawMap();
+}
+function pxToLatLon(px,py){
+  return [LAT_MAX-(py/canvas.height)*(LAT_MAX-LAT_MIN), LON_MIN+(px/canvas.width)*(LON_MAX-LON_MIN)];
+}
+function latLonToPx(lat,lon){
+  return [((lon-LON_MIN)/(LON_MAX-LON_MIN))*canvas.width, ((LAT_MAX-lat)/(LAT_MAX-LAT_MIN))*canvas.height];
+}
+
+function fieldValue(lat,lon,dateOffset=0){
+  if(currentLayer==='thermo') return thermoclineDepth(lat,lon,dateOffset);
+  return tempAt(lat,lon,currentDepth,dateOffset);
+}
+function normFor(v){
+  if(currentLayer==='thermo') return Math.max(0,Math.min(1,(v-THMIN)/(THMAX-THMIN)));
+  return Math.max(0,Math.min(1,(v-TMIN)/(TMAX-TMIN)));
+}
+function colorFor(norm){ return currentLayer==='thermo' ? thermoColormap(norm) : colormap(norm); }
+
+function drawMap(){
+  const cell=9;
+  const histMode = (activeTab==='history');
+  const dA = +document.getElementById('dateA').value;
+  const dB = +document.getElementById('dateB').value;
+
+  for(let py=0; py<canvas.height; py+=cell){
+    for(let px=0; px<canvas.width; px+=cell){
+      const [lat,lon] = pxToLatLon(px+cell/2, py+cell/2);
+      let dateOffset = 0;
+      if(histMode){ dateOffset = (px < canvas.width*splitPct/100) ? dA : dB; }
+      const v = fieldValue(lat,lon,dateOffset);
+      ctx.fillStyle = colorFor(normFor(v));
+      ctx.fillRect(px,py,cell+1,cell+1);
+    }
+  }
+  // graticule
+  ctx.strokeStyle='rgba(2,15,26,0.3)'; ctx.lineWidth=1;
+  for(let lat=LAT_MIN; lat<=LAT_MAX; lat+=5){ const [,py]=latLonToPx(lat,LON_MIN); ctx.beginPath(); ctx.moveTo(0,py); ctx.lineTo(canvas.width,py); ctx.stroke(); }
+  for(let lon=LON_MIN; lon<=LON_MAX; lon+=10){ const [px]=latLonToPx(LAT_MIN,lon); ctx.beginPath(); ctx.moveTo(px,0); ctx.lineTo(px,canvas.height); ctx.stroke(); }
+
+  if(histMode){
+    const splitX = canvas.width*splitPct/100;
+    ctx.strokeStyle='#EAF6F6'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(splitX,0); ctx.lineTo(splitX,canvas.height); ctx.stroke();
+    ctx.fillStyle='rgba(2,15,26,0.85)';
+    ctx.fillRect(10,10,52,20); ctx.fillStyle='#A8E6E8'; ctx.font='11px IBM Plex Mono'; ctx.fillText('DATE A',16,24);
+    ctx.fillStyle='rgba(2,15,26,0.85)';
+    ctx.fillRect(canvas.width-72,10,62,20); ctx.fillStyle='#FF7A4D'; ctx.fillText('DATE B',canvas.width-66,24);
+  }
+
+  if(queryPoint && !histMode){
+    const [px,py]=latLonToPx(queryPoint[0],queryPoint[1]);
+    ctx.beginPath(); ctx.arc(px,py,7,0,Math.PI*2); ctx.strokeStyle='#EAF6F6'; ctx.lineWidth=1.6; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(px-11,py); ctx.lineTo(px+11,py); ctx.moveTo(px,py-11); ctx.lineTo(px,py+11);
+    ctx.strokeStyle='rgba(234,246,246,0.5)'; ctx.lineWidth=1; ctx.stroke();
+  }
+
+  updateConfidenceBadge();
+  updateLegend();
+}
+
+function updateConfidenceBadge(){
+  const c = confidenceAt(currentLayer==='thermo' ? 150 : currentDepth);
+  const el = document.getElementById('confBadge');
+  el.textContent = c.tier; el.style.color = c.color;
+}
+function updateLegend(){
+  const bar = document.getElementById('legendBar');
+  const stops = currentLayer==='thermo'
+    ? '#A8E6E8,#1E96B0,#0B5A7A,#04304F,#020F1A'
+    : '#04304F,#0B5A7A,#1E96B0,#A8E6E8,#FF7A4D';
+  bar.innerHTML = `<defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="0">${stops.split(',').map((c,i,arr)=>`<stop offset="${(i/(arr.length-1)*100).toFixed(0)}%" stop-color="${c}"/>`).join('')}</linearGradient></defs><rect width="170" height="8" fill="url(#lg)"/>`;
+  document.getElementById('legendLo').textContent = currentLayer==='thermo' ? 'shallow' : 'cold';
+  document.getElementById('legendHi').textContent = currentLayer==='thermo' ? 'deep' : 'warm';
+}
+
+/* ===== interactions ===== */
+canvas.addEventListener('click', (e)=>{
+  if(activeTab==='history') return; // history uses split slider, not click-query
+  const rect=canvas.getBoundingClientRect();
+  const [lat,lon]=pxToLatLon(e.clientX-rect.left, e.clientY-rect.top);
+  queryPoint=[lat,lon];
+  renderQuery(lat,lon);
+  drawMap();
+});
+
+function renderQuery(lat,lon){
+  document.getElementById('queryEmpty').style.display='none';
+  document.getElementById('queryContent').style.display='block';
+  document.getElementById('qPos').textContent = `${lat.toFixed(2)}N ${lon.toFixed(2)}E`;
+  document.getElementById('qSurf').textContent = tempAt(lat,lon,0.5).toFixed(1)+' C';
+  const thermo = thermoclineDepth(lat,lon);
+  document.getElementById('qThermo').textContent = Math.round(thermo)+' M';
+  const conf = confidenceAt(currentDepth);
+  const qConf = document.getElementById('qConf');
+  qConf.textContent = conf.tier;
+  qConf.className = 'v mono ' + (conf.tier==='HIGH'?'conf-high':conf.tier==='MEDIUM'?'conf-med':'conf-low');
+
+  const svg = document.getElementById('sparkSvg');
+  const W=300,H=140, padL=30,padR=10,padT=8,padB=18, maxDepth=900;
+  const temps = DEPTHS35.map(d=>tempAt(lat,lon,d));
+  const tMin=Math.min(...temps)-1, tMax=Math.max(...temps)+1;
+  const x=t=>padL+(t-tMin)/(tMax-tMin)*(W-padL-padR);
+  const y=d=>padT+(d/maxDepth)*(H-padT-padB);
+  let path = DEPTHS35.map((d,i)=>`${i===0?'M':'L'}${x(temps[i]).toFixed(1)},${y(d).toFixed(1)}`).join(' ');
+  const ty=y(thermo);
+  svg.innerHTML = `
+    <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${H-padB}" stroke="rgba(234,246,246,0.2)"/>
+    <line x1="${padL}" y1="${H-padB}" x2="${W-padR}" y2="${H-padB}" stroke="rgba(234,246,246,0.2)"/>
+    <line x1="${padL}" y1="${ty}" x2="${W-padR}" y2="${ty}" stroke="#E8B44D" stroke-dasharray="3 3"/>
+    <path d="${path}" fill="none" stroke="#A8E6E8" stroke-width="1.8"/>
+    <text x="2" y="${padT+8}" font-size="9" fill="rgba(234,246,246,0.4)">0m</text>
+    <text x="2" y="${H-padB}" font-size="9" fill="rgba(234,246,246,0.4)">900m</text>
+    <text x="${W-70}" y="${ty-4}" font-size="9" fill="#E8B44D">thermocline</text>
+  `;
+}
+
+/* depth presets */
+document.querySelectorAll('.preset-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.preset-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    const p = btn.dataset.preset;
+    if(p==='thermo'){
+      currentDepth = queryPoint ? thermoclineDepth(queryPoint[0],queryPoint[1]) : 180;
+    } else {
+      currentDepth = +p;
+    }
+    drawMap();
+    if(queryPoint) renderQuery(queryPoint[0],queryPoint[1]);
+  });
+});
+
+/* layer toggle */
+document.getElementById('layerToggle').addEventListener('click', (e)=>{
+  const btn = e.target.closest('button'); if(!btn) return;
+  document.querySelectorAll('#layerToggle button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  currentLayer = btn.dataset.layer;
+  document.getElementById('presetRow').querySelectorAll('button').forEach(b=> b.disabled = (currentLayer==='thermo'));
+  drawMap();
+});
+
+/* tab switching */
+document.querySelectorAll('.nav-item').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.nav-item').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    activeTab = btn.dataset.tab;
+    document.querySelectorAll('.panel-tabsheet').forEach(s=>s.classList.remove('active'));
+    document.getElementById('tab-'+activeTab).classList.add('active');
+    document.getElementById('mapHint').textContent = activeTab==='history'
+      ? 'Drag the split slider in the panel to compare Date A against Date B.'
+      : 'Click any point on the domain for a full readout — depth profile, thermocline, confidence.';
+    drawMap();
+  });
+});
+
+/* historical comparison controls */
+document.getElementById('splitSlider').addEventListener('input', (e)=>{
+  splitPct = +e.target.value; drawMap();
+});
+document.getElementById('dateA').addEventListener('change', drawMap);
+document.getElementById('dateB').addEventListener('change', drawMap);
+
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+queryPoint=[17,75];
+renderQuery(17,75);
+drawMap();
+</script>
+</body>
+</html>

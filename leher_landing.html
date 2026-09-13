@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LEHER — Ocean Subsurface Intelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --abyss:#031B2E;
+    --deep:#04304F;
+    --current:#0B5A7A;
+    --surface:#1E96B0;
+    --foam:#A8E6E8;
+    --coral:#FF7A4D;
+    --text:#EAF6F6;
+    --text-dim:rgba(234,246,246,0.62);
+    --text-dim-2:rgba(234,246,246,0.4);
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    background:var(--abyss);
+    color:var(--text);
+    font-family:'IBM Plex Sans', sans-serif;
+    font-size:17px;
+    line-height:1.65;
+    overflow-x:hidden;
+  }
+  h1,h2,h3,.display{
+    font-family:'Space Grotesk', sans-serif;
+    font-weight:600;
+    letter-spacing:-0.01em;
+  }
+  .figures{ font-variant-numeric: tabular-nums; }
+  a{color:inherit;}
+  ::selection{ background:var(--surface); color:var(--abyss); }
+
+  /* ---------- reduced motion ---------- */
+  @media (prefers-reduced-motion: reduce){
+    *{animation-duration:0.001ms !important; animation-iteration-count:1 !important; transition-duration:0.001ms !important;}
+  }
+
+  /* ---------- top nav ---------- */
+  .nav{
+    position:fixed; top:0; left:0; right:0; z-index:100;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:28px 5vw;
+    transition:padding 0.5s ease, background 0.5s ease, backdrop-filter 0.5s ease;
+  }
+  .nav.scrolled{
+    padding:16px 5vw;
+    background:rgba(3,27,46,0.82);
+    backdrop-filter:blur(14px);
+    border-bottom:1px solid rgba(168,230,232,0.08);
+  }
+  .nav-mark{
+    font-family:'Space Grotesk', sans-serif;
+    font-weight:700;
+    font-size:20px;
+    letter-spacing:0.02em;
+    display:flex; align-items:center; gap:10px;
+  }
+  .nav-mark svg{ width:22px; height:22px; }
+  .nav-links{
+    display:flex; gap:36px;
+    font-size:14.5px;
+    opacity:0;
+    transform:translateY(-6px);
+    pointer-events:none;
+    transition:opacity 0.5s ease, transform 0.5s ease;
+  }
+  .nav.scrolled .nav-links{ opacity:1; transform:translateY(0); pointer-events:auto; }
+  .nav-links a{ text-decoration:none; color:var(--text-dim); transition:color 0.25s ease; }
+  .nav-links a:hover{ color:var(--foam); }
+  .nav-cta{
+    display:none;
+  }
+  .nav.scrolled .nav-cta{
+    display:inline-flex; align-items:center; gap:8px;
+    font-size:14px; color:var(--abyss); background:var(--foam);
+    padding:9px 18px; border-radius:100px; text-decoration:none;
+    font-weight:500;
+  }
+  .burger{
+    width:22px; height:14px; position:relative; cursor:pointer;
+  }
+  .burger span{
+    position:absolute; left:0; right:0; height:1.5px; background:var(--text);
+  }
+  .burger span:nth-child(1){ top:0; }
+  .burger span:nth-child(2){ top:6px; width:70%; }
+  .burger span:nth-child(3){ top:12px; }
+  .nav.scrolled .burger{ display:none; }
+
+  /* ---------- hero ---------- */
+  .hero{
+    position:relative;
+    height:100vh;
+    min-height:640px;
+    width:100%;
+    overflow:hidden;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    flex-direction:column;
+  }
+  .hero-ocean{
+    position:absolute; inset:0;
+    background:
+      radial-gradient(ellipse 90% 60% at 30% 15%, rgba(168,230,232,0.16), transparent 55%),
+      radial-gradient(ellipse 70% 50% at 75% 30%, rgba(30,150,176,0.28), transparent 60%),
+      linear-gradient(180deg, var(--deep) 0%, var(--current) 45%, var(--deep) 78%, var(--abyss) 100%);
+    background-size:180% 180%, 160% 160%, 100% 100%;
+    animation:drift 22s ease-in-out infinite alternate;
+  }
+  @keyframes drift{
+    0%{ background-position: 20% 10%, 80% 20%, center; }
+    100%{ background-position: 60% 40%, 30% 60%, center; }
+  }
+  .hero-caustics{
+    position:absolute; inset:0; opacity:0.5; mix-blend-mode:screen;
+  }
+  .hero-overlay{
+    position:absolute; inset:0;
+    background:linear-gradient(180deg, rgba(3,27,46,0) 0%, rgba(3,27,46,0.15) 55%, rgba(3,27,46,0.92) 100%);
+  }
+  .hero-waves{
+    position:absolute; left:0; right:0; bottom:-2px; width:100%; z-index:2;
+  }
+  .hero-waves svg{ width:100%; height:auto; display:block; }
+  .wave-back{ animation:waveShift 16s ease-in-out infinite alternate; }
+  .wave-front{ animation:waveShift 11s ease-in-out infinite alternate-reverse; }
+  @keyframes waveShift{
+    0%{ transform:translateX(-2%) translateY(0); }
+    100%{ transform:translateX(2%) translateY(4px); }
+  }
+
+  .hero-content{ position:relative; z-index:3; text-align:center; padding:0 24px; }
+  .hero-title{
+    font-size:clamp(64px, 16vw, 200px);
+    line-height:0.9;
+    letter-spacing:-0.02em;
+    color:var(--text);
+    opacity:0;
+    transform:translateY(24px);
+    animation:titleReveal 1.6s cubic-bezier(.22,1,.36,1) 0.3s forwards;
+  }
+  @keyframes titleReveal{
+    to{ opacity:1; transform:translateY(0); }
+  }
+  .hero-tagline{
+    margin-top:18px;
+    font-size:clamp(15px, 2vw, 19px);
+    color:var(--text-dim);
+    font-weight:400;
+    opacity:0;
+    animation:tagReveal 1.2s ease 1.5s forwards;
+  }
+  @keyframes tagReveal{ to{ opacity:1; } }
+
+  .scroll-cue{
+    position:absolute; bottom:34px; left:50%; transform:translateX(-50%);
+    z-index:3; display:flex; flex-direction:column; align-items:center; gap:8px;
+    opacity:0; animation:tagReveal 1.2s ease 2.1s forwards;
+  }
+  .scroll-cue .line{
+    width:1px; height:34px; background:linear-gradient(var(--foam), transparent);
+    animation:pulseLine 2.4s ease-in-out infinite;
+  }
+  @keyframes pulseLine{ 0%,100%{ opacity:0.3; } 50%{ opacity:1; } }
+  .scroll-cue span{ font-size:11px; letter-spacing:0.08em; color:var(--text-dim-2); }
+
+  /* ---------- narrative sections ---------- */
+  .narrative{ position:relative; background:var(--abyss); }
+  .divider{
+    width:100%; display:block; color:var(--current);
+  }
+  .section{
+    max-width:1180px; margin:0 auto;
+    padding:120px 5vw;
+    display:grid; grid-template-columns:1fr 1fr; gap:80px; align-items:center;
+  }
+  .section.reverse .col-text{ order:2; }
+  .section.reverse .col-visual{ order:1; }
+  .col-text{ max-width:480px; }
+  .eyebrow-kicker{
+    font-size:14px; color:var(--surface); font-weight:500; margin-bottom:16px;
+    font-family:'Space Grotesk', sans-serif;
+  }
+  .section h2{
+    font-size:clamp(28px, 3.4vw, 42px);
+    margin-bottom:22px;
+    color:var(--text);
+  }
+  .section p{
+    color:var(--text-dim);
+    font-size:16.5px;
+    max-width:46ch;
+  }
+  .col-visual{ display:flex; align-items:center; justify-content:center; }
+  .col-visual svg{ width:100%; height:auto; max-width:440px; }
+
+  /* proof section */
+  .proof{
+    max-width:1180px; margin:0 auto; padding:140px 5vw 120px;
+    text-align:center;
+  }
+  .proof .eyebrow-kicker{ text-align:center; }
+  .proof h2{ font-size:clamp(28px, 3.4vw, 42px); max-width:680px; margin:0 auto 20px; }
+  .proof > p{ color:var(--text-dim); max-width:60ch; margin:0 auto 64px; }
+  .stat-row{
+    display:grid; grid-template-columns:repeat(3, 1fr); gap:40px;
+    margin-bottom:80px;
+  }
+  .stat{ text-align:center; }
+  .stat .num{
+    font-family:'Space Grotesk', sans-serif;
+    font-size:clamp(36px, 5vw, 56px);
+    font-weight:700;
+    color:var(--foam);
+    font-variant-numeric: tabular-nums;
+  }
+  .stat .num .unit{ font-size:0.5em; color:var(--surface); font-weight:500; }
+  .stat .label{
+    margin-top:10px; font-size:14px; color:var(--text-dim);
+    max-width:26ch; margin-left:auto; margin-right:auto;
+  }
+  .chart-wrap{
+    background:linear-gradient(180deg, rgba(11,90,122,0.16), rgba(4,48,79,0.28));
+    border:1px solid rgba(168,230,232,0.1);
+    border-radius:4px;
+    padding:44px 5vw;
+    text-align:left;
+  }
+  .chart-wrap .chart-label{ font-size:13px; color:var(--text-dim-2); margin-bottom:24px; }
+  .chart-wrap svg{ width:100%; height:auto; }
+
+  /* who it's for */
+  .roles{ max-width:1180px; margin:0 auto; padding:100px 5vw 140px; }
+  .roles-head{ max-width:640px; margin-bottom:64px; }
+  .roles-head .eyebrow-kicker{ margin-bottom:16px; }
+  .roles-head h2{ font-size:clamp(28px, 3.4vw, 42px); }
+  .role-grid{
+    display:grid; grid-template-columns:repeat(4, 1fr); gap:1px;
+    background:rgba(168,230,232,0.1);
+    border:1px solid rgba(168,230,232,0.1);
+  }
+  .role-card{
+    background:var(--abyss);
+    padding:40px 28px;
+    display:flex; flex-direction:column; gap:18px;
+    text-decoration:none; color:var(--text);
+    transition:background 0.35s ease;
+    position:relative;
+  }
+  .role-card:hover{ background:var(--deep); }
+  .role-card svg{ width:34px; height:34px; color:var(--foam); }
+  .role-card h3{ font-size:19px; }
+  .role-card p{ font-size:14.5px; color:var(--text-dim); flex-grow:1; }
+  .role-card .enter{
+    font-size:13.5px; color:var(--surface); font-weight:500;
+    display:flex; align-items:center; gap:6px;
+    transition:gap 0.25s ease, color 0.25s ease;
+  }
+  .role-card:hover .enter{ gap:10px; color:var(--foam); }
+
+  /* footer */
+  footer{
+    border-top:1px solid rgba(168,230,232,0.08);
+    padding:56px 5vw 40px;
+  }
+  .footer-grid{
+    max-width:1180px; margin:0 auto;
+    display:flex; justify-content:space-between; align-items:flex-start; gap:40px;
+    flex-wrap:wrap;
+  }
+  footer .mark{ font-family:'Space Grotesk', sans-serif; font-weight:700; font-size:17px; margin-bottom:10px; }
+  footer .credit{ font-size:13.5px; color:var(--text-dim-2); max-width:34ch; line-height:1.7; }
+  .footer-links{ display:flex; gap:32px; }
+  .footer-col h4{ font-size:12.5px; color:var(--text-dim-2); margin-bottom:12px; font-weight:500; }
+  .footer-col a{ display:block; font-size:14px; color:var(--text-dim); text-decoration:none; margin-bottom:8px; }
+  .footer-col a:hover{ color:var(--foam); }
+
+  /* mobile */
+  @media (max-width:860px){
+    .section{ grid-template-columns:1fr; gap:48px; padding:90px 6vw; }
+    .section.reverse .col-text, .section.reverse .col-visual{ order:unset; }
+    .col-text{ max-width:100%; }
+    .stat-row{ grid-template-columns:1fr; gap:36px; }
+    .role-grid{ grid-template-columns:1fr; }
+    .footer-grid{ flex-direction:column; }
+    .footer-links{ gap:24px; flex-wrap:wrap; }
+    .nav-links{ display:none; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="nav" id="nav">
+  <div class="nav-mark">
+    <svg viewBox="0 0 24 24" fill="none"><path d="M2 12c2 0 2-3 4-3s2 3 4 3 2-3 4-3 2 3 4 3 2-3 4-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M2 17c2 0 2-3 4-3s2 3 4 3 2-3 4-3 2 3 4 3 2-3 4-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity="0.5"/></svg>
+    LEHER
+  </div>
+  <div class="nav-links">
+    <a href="#problem">The problem</a>
+    <a href="#idea">The idea</a>
+    <a href="#proof">The proof</a>
+    <a href="#roles">Dashboards</a>
+  </div>
+  <a class="nav-cta" href="#roles">Enter a dashboard</a>
+  <div class="burger"><span></span><span></span><span></span></div>
+</nav>
+
+<section class="hero">
+  <div class="hero-ocean"></div>
+  <div class="hero-overlay"></div>
+  <div class="hero-waves">
+    <svg class="wave-back" viewBox="0 0 1440 200" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M0,100 C240,150 480,50 720,90 C960,130 1200,60 1440,100 L1440,200 L0,200 Z" fill="#04304F" opacity="0.7"/>
+    </svg>
+    <svg class="wave-front" viewBox="0 0 1440 180" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" style="margin-top:-60px;">
+      <path d="M0,90 C260,40 500,130 760,80 C1020,30 1240,110 1440,70 L1440,180 L0,180 Z" fill="#031B2E"/>
+    </svg>
+  </div>
+  <div class="hero-content">
+    <h1 class="hero-title display">LEHER</h1>
+    <p class="hero-tagline">Reading the surface. Revealing the depths.</p>
+  </div>
+  <div class="scroll-cue">
+    <span>SCROLL</span>
+    <div class="line"></div>
+  </div>
+</section>
+
+<div class="narrative">
+
+  <section class="section" id="problem">
+    <div class="col-text">
+      <div class="eyebrow-kicker">The problem</div>
+      <h2>Satellites only ever see the ocean's skin.</h2>
+      <p>Temperature, height, salinity, and currents at the surface — that's the limit of what orbits above can measure. Underneath, where heat is stored, where cyclones draw their fuel, and where fish actually live, satellites see nothing at all.</p>
+    </div>
+    <div class="col-visual">
+      <svg viewBox="0 0 440 320" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="220" cy="40" r="10" fill="none" stroke="#1E96B0" stroke-width="1.4"/>
+        <line x1="220" y1="50" x2="220" y2="20" stroke="#1E96B0" stroke-width="1" opacity="0.4"/>
+        <path d="M180 55 L220 30 L260 55" stroke="#A8E6E8" stroke-width="1.2" fill="none"/>
+        <line x1="220" y1="40" x2="220" y2="145" stroke="#A8E6E8" stroke-width="1.4" stroke-dasharray="3 5">
+          <animate attributeName="stroke-dashoffset" from="0" to="-16" dur="1.6s" repeatCount="indefinite"/>
+        </line>
+        <line x1="150" y1="145" x2="440" y2="145" stroke="#1E96B0" stroke-width="1"/>
+        <text x="0" y="140" fill="#EAF6F6" opacity="0.5" font-size="11" font-family="IBM Plex Sans">surface</text>
+        <circle cx="220" cy="150" r="5" fill="#FF7A4D" opacity="0.85"/>
+        <rect x="0" y="150" width="440" height="170" fill="url(#deepGrad)"/>
+        <defs>
+          <linearGradient id="deepGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#04304F" stop-opacity="0.5"/>
+            <stop offset="100%" stop-color="#031B2E" stop-opacity="0.9"/>
+          </linearGradient>
+        </defs>
+        <g opacity="0.35">
+          <path d="M0 190 C60 185 100 195 160 190 S 280 195 440 190" stroke="#A8E6E8" stroke-width="1" fill="none"/>
+          <path d="M0 240 C60 235 100 245 160 240 S 280 245 440 240" stroke="#A8E6E8" stroke-width="1" fill="none"/>
+          <path d="M0 290 C60 285 100 295 160 290 S 280 295 440 290" stroke="#A8E6E8" stroke-width="1" fill="none"/>
+        </g>
+        <text x="230" y="200" fill="#EAF6F6" opacity="0.28" font-size="12" font-family="IBM Plex Sans" font-style="italic">unmeasured</text>
+      </svg>
+    </div>
+  </section>
+
+  <section class="section reverse" id="idea">
+    <div class="col-text">
+      <div class="eyebrow-kicker">The idea</div>
+      <h2>OceanEmbed reconstructs what's missing.</h2>
+      <p>Twelve satellite-observable surface signals — temperature, salinity, height, currents, and wind — go into a custom deep learning model, <span class="figures">OceanUNet</span>, trained to map what's on the surface to what's happening below it, down to 902 metres.</p>
+    </div>
+    <div class="col-visual">
+      <svg viewBox="0 0 460 220" xmlns="http://www.w3.org/2000/svg">
+        <g id="inputs">
+          <rect x="0" y="20" width="14" height="14" rx="2" fill="#1E96B0"/>
+          <rect x="0" y="42" width="14" height="14" rx="2" fill="#1E96B0"/>
+          <rect x="0" y="64" width="14" height="14" rx="2" fill="#1E96B0"/>
+          <rect x="0" y="86" width="14" height="14" rx="2" fill="#1E96B0"/>
+          <rect x="0" y="108" width="14" height="14" rx="2" fill="#1E96B0"/>
+          <rect x="0" y="130" width="14" height="14" rx="2" fill="#1E96B0"/>
+        </g>
+        <text x="0" y="160" fill="#EAF6F6" opacity="0.5" font-size="11">12 surface channels</text>
+        <line x1="20" y1="90" x2="150" y2="90" stroke="#A8E6E8" stroke-width="1" opacity="0.5"/>
+        <rect x="150" y="40" width="110" height="100" rx="6" fill="#0B5A7A" opacity="0.35" stroke="#1E96B0"/>
+        <text x="205" y="85" fill="#EAF6F6" font-size="12" text-anchor="middle" font-family="Space Grotesk">Ocean</text>
+        <text x="205" y="102" fill="#EAF6F6" font-size="12" text-anchor="middle" font-family="Space Grotesk">UNet</text>
+        <line x1="260" y1="90" x2="330" y2="90" stroke="#A8E6E8" stroke-width="1" opacity="0.5"/>
+        <g id="outputs">
+          <rect x="330" y="10" width="14" height="8" fill="#A8E6E8"/>
+          <rect x="330" y="24" width="14" height="8" fill="#A8E6E8" opacity="0.9"/>
+          <rect x="330" y="38" width="14" height="8" fill="#1E96B0" opacity="0.85"/>
+          <rect x="330" y="52" width="14" height="8" fill="#1E96B0" opacity="0.75"/>
+          <rect x="330" y="66" width="14" height="8" fill="#0B5A7A" opacity="0.75"/>
+          <rect x="330" y="80" width="14" height="8" fill="#0B5A7A" opacity="0.65"/>
+          <rect x="330" y="94" width="14" height="8" fill="#04304F" opacity="0.8"/>
+          <rect x="330" y="108" width="14" height="8" fill="#04304F" opacity="0.7"/>
+          <rect x="330" y="122" width="14" height="8" fill="#031B2E" opacity="0.9" stroke="#0B5A7A" stroke-width="0.5"/>
+          <rect x="330" y="136" width="14" height="8" fill="#031B2E" opacity="0.9" stroke="#0B5A7A" stroke-width="0.5"/>
+        </g>
+        <text x="330" y="160" fill="#EAF6F6" opacity="0.5" font-size="11">35 depth levels</text>
+      </svg>
+    </div>
+  </section>
+
+  <section class="proof" id="proof">
+    <div class="eyebrow-kicker">The proof</div>
+    <h2>Validated against real ARGO floats, not just held-out data.</h2>
+    <p>Coverage spans the North Indian Ocean — 5°N to 30°N, 45°E to 105°E — at a daily, 0.25° grid.</p>
+    <div class="stat-row">
+      <div class="stat">
+        <div class="num figures">r &gt; 0.92</div>
+        <div class="label">Pearson correlation against in-situ ARGO profiles, overall</div>
+      </div>
+      <div class="stat">
+        <div class="num figures">&lt;0.80<span class="unit">°C</span></div>
+        <div class="label">RMSE in the upper 100 metres, where most operational decisions are made</div>
+      </div>
+      <div class="stat">
+        <div class="num figures">0–900<span class="unit">m</span></div>
+        <div class="label">Reconstructed depth range, from the surface to 902.3 metres</div>
+      </div>
+    </div>
+    <div class="chart-wrap">
+      <div class="chart-label">Error by depth — recreated from the model's validation output</div>
+      <svg viewBox="0 0 800 220" xmlns="http://www.w3.org/2000/svg">
+        <line x1="0" y1="200" x2="800" y2="200" stroke="#EAF6F6" stroke-opacity="0.15"/>
+        <line x1="0" y1="150" x2="800" y2="150" stroke="#EAF6F6" stroke-opacity="0.08"/>
+        <line x1="0" y1="100" x2="800" y2="100" stroke="#EAF6F6" stroke-opacity="0.08"/>
+        <line x1="0" y1="50" x2="800" y2="50" stroke="#EAF6F6" stroke-opacity="0.08"/>
+        <path d="M0,20 C100,25 180,60 260,110 C340,155 420,170 520,178 C620,184 720,188 800,190"
+          fill="none" stroke="#1E96B0" stroke-width="2.5"/>
+        <path d="M0,20 C100,25 180,60 260,110 C340,155 420,170 520,178 C620,184 720,188 800,190 L800,220 L0,220 Z"
+          fill="url(#rmseGrad)" opacity="0.5"/>
+        <defs>
+          <linearGradient id="rmseGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#1E96B0" stop-opacity="0.35"/>
+            <stop offset="100%" stop-color="#1E96B0" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <circle cx="260" cy="110" r="4" fill="#FF7A4D"/>
+        <text x="272" y="106" fill="#EAF6F6" opacity="0.6" font-size="11">thermocline — steepest gradient</text>
+        <text x="0" y="215" fill="#EAF6F6" opacity="0.4" font-size="11">0m</text>
+        <text x="740" y="215" fill="#EAF6F6" opacity="0.4" font-size="11">900m</text>
+        <text x="0" y="14" fill="#EAF6F6" opacity="0.4" font-size="11">RMSE (°C)</text>
+      </svg>
+    </div>
+  </section>
+
+  <section class="roles" id="roles">
+    <div class="roles-head">
+      <div class="eyebrow-kicker">Who it's for</div>
+      <h2>The same reconstruction, shaped for how each person actually uses it.</h2>
+    </div>
+    <div class="role-grid">
+      <a class="role-card" href="leher_researcher.html" data-role="researcher">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="10" cy="10" r="6" stroke="currentColor" stroke-width="1.4"/><line x1="14.5" y1="14.5" x2="20" y2="20" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M10 6v8M6 10h8" stroke="currentColor" stroke-width="1" opacity="0.5"/></svg>
+        <h3>Researchers</h3>
+        <p>Full model output, depth profiles, and validation metrics at full resolution.</p>
+        <span class="enter">Enter dashboard →</span>
+      </a>
+      <a class="role-card" href="leher_defence.html" data-role="defence">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 2 L20 5 V11 C20 16 16.5 19.5 12 22 C7.5 19.5 4 16 4 11 V5 L12 2Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M8 11h8M12 7v8" stroke="currentColor" stroke-width="1" opacity="0.5"/></svg>
+        <h3>Defence</h3>
+        <p>Subsurface thermal structure and thermocline depth for operational awareness.</p>
+        <span class="enter">Enter dashboard →</span>
+      </a>
+      <a class="role-card" href="leher_coastal.html" data-role="coastal">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M3 18c2 1.5 4 1.5 6 0s4-1.5 6 0 4 1.5 6 0" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M7 14c1-4 3-8 5-10 2 2 4 6 5 10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        <h3>Coastal Communities</h3>
+        <p>Plain-language sea condition guidance, built for a phone in bright sun.</p>
+        <span class="enter">Enter dashboard →</span>
+      </a>
+      <a class="role-card" href="leher_industry.html" data-role="industry">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M4 16h16l-2 5H6l-2-5Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M8 16V7l4-3 4 3v9" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M2 20c2 1 3 1 5 0" stroke="currentColor" stroke-width="1" opacity="0.5"/></svg>
+        <h3>Industry</h3>
+        <p>Ocean-aware route planning, built on live current and wind fields.</p>
+        <span class="enter">Enter dashboard →</span>
+      </a>
+    </div>
+  </section>
+
+</div>
+
+<footer>
+  <div class="footer-grid">
+    <div>
+      <div class="mark">LEHER</div>
+      <p class="credit">Built for Smart India Hackathon 2026, on the OceanEmbed reconstruction pipeline. Data from CMEMS, NASA PO.DAAC, and the International ARGO Program.</p>
+    </div>
+    <div class="footer-links">
+      <div class="footer-col">
+        <h4>Dashboards</h4>
+        <a href="leher_researcher.html">Researcher</a>
+        <a href="leher_defence.html">Defence</a>
+        <a href="leher_coastal.html">Coastal</a>
+        <a href="leher_coastal_desktop.html">Coastal (desktop)</a>
+        <a href="leher_industry.html">Industry</a>
+      </div>
+      <div class="footer-col">
+        <h4>Project</h4>
+        <a href="#problem">The problem</a>
+        <a href="#idea">The idea</a>
+        <a href="#proof">The proof</a>
+        <a href="https://github.com/kornikahajra-ux/SIH2026">GitHub</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<script>
+  const nav = document.getElementById('nav');
+  window.addEventListener('scroll', () => {
+    if (window.scrollY > 60) nav.classList.add('scrolled');
+    else nav.classList.remove('scrolled');
+  });
+</script>
+
+</body>
+</html>

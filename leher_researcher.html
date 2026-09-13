@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LEHER — Researcher Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --abyss:#031B2E; --deep:#04304F; --current:#0B5A7A; --surface:#1E96B0;
+    --foam:#A8E6E8; --coral:#FF7A4D; --text:#EAF6F6;
+    --text-dim:rgba(234,246,246,0.62); --text-dim-2:rgba(234,246,246,0.38);
+    --line:rgba(168,230,232,0.12);
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{
+    background:var(--abyss); color:var(--text); font-family:'IBM Plex Sans',sans-serif;
+    font-size:14px; height:100vh; overflow:hidden;
+  }
+  h1,h2,h3,.display{ font-family:'Space Grotesk',sans-serif; font-weight:600; }
+  .num{ font-variant-numeric: tabular-nums; }
+  button{ font-family:inherit; cursor:pointer; }
+  select{ font-family:inherit; }
+
+  .shell{
+    display:grid;
+    grid-template-columns:232px 1fr 360px;
+    grid-template-rows:60px 1fr;
+    height:100vh;
+  }
+
+  /* ---- sidebar ---- */
+  .sidebar{
+    grid-row:1 / 3; grid-column:1;
+    background:var(--deep);
+    border-right:1px solid var(--line);
+    display:flex; flex-direction:column;
+    padding:20px 16px;
+  }
+  .mark{ display:flex; align-items:center; gap:9px; font-weight:700; font-size:17px; margin-bottom:26px; padding:0 4px; }
+  .mark svg{ width:18px; height:18px; color:var(--foam); }
+
+  .role-switch{ display:flex; flex-direction:column; gap:4px; margin-bottom:26px; }
+  .role-switch .label{ font-size:11px; color:var(--text-dim-2); padding:0 4px 6px; letter-spacing:0.02em; }
+  .role-pill{
+    display:flex; align-items:center; gap:9px; padding:9px 10px; border-radius:6px;
+    font-size:13px; color:var(--text-dim); text-decoration:none; transition:background 0.2s ease, color 0.2s ease;
+  }
+  .role-pill.active{ background:rgba(168,230,232,0.1); color:var(--foam); }
+  .role-pill:hover{ background:rgba(168,230,232,0.06); color:var(--text); }
+  .role-pill svg{ width:15px; height:15px; flex-shrink:0; }
+
+  .section-nav{ display:flex; flex-direction:column; gap:2px; flex-grow:1; }
+  .section-nav .label{ font-size:11px; color:var(--text-dim-2); padding:0 4px 6px; letter-spacing:0.02em; }
+  .nav-item{
+    padding:10px 10px; border-radius:6px; font-size:13.5px; color:var(--text-dim);
+    background:none; border:none; text-align:left; width:100%;
+    transition:background 0.2s ease, color 0.2s ease;
+  }
+  .nav-item.active{ background:var(--current); color:var(--text); }
+  .nav-item:hover:not(.active){ background:rgba(168,230,232,0.06); color:var(--text); }
+
+  .status-chip{
+    margin-top:auto; padding:12px; border-radius:8px; background:rgba(3,27,46,0.5);
+    border:1px solid var(--line);
+  }
+  .status-chip .dot{ width:6px; height:6px; border-radius:50%; background:var(--foam); display:inline-block; margin-right:7px; animation:pulse 2s infinite; }
+  @keyframes pulse{ 0%,100%{ opacity:1;} 50%{ opacity:0.4; } }
+  .status-chip .row1{ font-size:12px; color:var(--text-dim); margin-bottom:6px; }
+  .status-chip .row2{ font-size:11px; color:var(--text-dim-2); line-height:1.5; }
+
+  /* ---- topbar ---- */
+  .topbar{
+    grid-row:1; grid-column:2 / 4;
+    background:var(--abyss); border-bottom:1px solid var(--line);
+    display:flex; align-items:center; gap:24px; padding:0 24px;
+  }
+  .tb-group{ display:flex; align-items:center; gap:10px; }
+  .tb-label{ font-size:11.5px; color:var(--text-dim-2); }
+  .tb-select{
+    background:var(--deep); color:var(--text); border:1px solid var(--line);
+    padding:7px 10px; border-radius:6px; font-size:13px;
+  }
+  .depth-group{ display:flex; align-items:center; gap:12px; flex-grow:1; max-width:520px; }
+  .depth-group input[type=range]{ flex-grow:1; accent-color:var(--surface); }
+  .depth-readout{ font-size:13px; min-width:64px; color:var(--foam); }
+  .play-btn{
+    width:28px; height:28px; border-radius:50%; background:var(--current); border:none; color:var(--text);
+    display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  }
+  .play-btn:hover{ background:var(--surface); }
+  .depth-toggle{ display:flex; border:1px solid var(--line); border-radius:6px; overflow:hidden; }
+  .depth-toggle button{
+    background:none; border:none; color:var(--text-dim); padding:6px 12px; font-size:12px;
+  }
+  .depth-toggle button.active{ background:var(--current); color:var(--text); }
+  .search-jump{ margin-left:auto; }
+
+  /* ---- map stage ---- */
+  .mapstage{
+    grid-row:2; grid-column:2;
+    position:relative;
+    background:var(--abyss);
+    overflow:hidden;
+  }
+  #mapCanvas{ width:100%; height:100%; display:block; cursor:crosshair; }
+  .map-hint{
+    position:absolute; top:16px; left:16px; background:rgba(3,27,46,0.75); backdrop-filter:blur(6px);
+    border:1px solid var(--line); border-radius:6px; padding:8px 13px; font-size:12px; color:var(--text-dim);
+    max-width:280px;
+  }
+  .map-legend{
+    position:absolute; bottom:16px; left:16px; background:rgba(3,27,46,0.75); backdrop-filter:blur(6px);
+    border:1px solid var(--line); border-radius:6px; padding:10px 14px;
+  }
+  .legend-bar{ width:180px; height:10px; border-radius:3px; background:linear-gradient(90deg,#04304F,#0B5A7A,#1E96B0,#A8E6E8,#FF7A4D); margin-bottom:6px; }
+  .legend-labels{ display:flex; justify-content:space-between; font-size:10.5px; color:var(--text-dim-2); }
+  .demo-badge{
+    position:absolute; top:16px; right:16px; background:rgba(255,122,77,0.14); border:1px solid rgba(255,122,77,0.4);
+    color:var(--coral); font-size:11px; padding:6px 11px; border-radius:100px;
+  }
+
+  /* ---- right panel ---- */
+  .panel{
+    grid-row:2; grid-column:3;
+    background:var(--deep); border-left:1px solid var(--line);
+    overflow-y:auto; padding:22px 20px 40px;
+  }
+  .panel h2{ font-size:16px; margin-bottom:4px; }
+  .panel .sub{ font-size:12.5px; color:var(--text-dim-2); margin-bottom:20px; }
+  .panel-tabsheet{ display:none; }
+  .panel-tabsheet.active{ display:block; }
+
+  .empty-state{
+    text-align:center; padding:60px 10px; color:var(--text-dim-2); font-size:13px; line-height:1.7;
+  }
+  .empty-state svg{ width:34px; height:34px; margin-bottom:14px; color:var(--surface); opacity:0.6; }
+
+  .metric-row{ display:flex; justify-content:space-between; padding:9px 0; border-bottom:1px solid var(--line); font-size:13px; }
+  .metric-row .k{ color:var(--text-dim); }
+  .metric-row .v{ color:var(--foam); }
+
+  .chart-box{ margin-bottom:26px; }
+  .chart-box .title{ font-size:12px; color:var(--text-dim); margin-bottom:10px; }
+  .chart-box svg{ width:100%; height:auto; }
+
+  .toggle-row{ display:flex; gap:6px; margin-bottom:18px; }
+  .toggle-row button{
+    flex:1; background:var(--abyss); border:1px solid var(--line); color:var(--text-dim);
+    padding:7px; border-radius:6px; font-size:12px;
+  }
+  .toggle-row button.active{ background:var(--current); color:var(--text); border-color:var(--current); }
+
+  .subtab-row{ display:flex; gap:16px; margin-bottom:18px; border-bottom:1px solid var(--line); }
+  .subtab-row button{
+    background:none; border:none; color:var(--text-dim-2); padding:0 0 10px; font-size:12.5px;
+    border-bottom:2px solid transparent;
+  }
+  .subtab-row button.active{ color:var(--foam); border-color:var(--foam); }
+
+  .channel-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .channel-tile{ background:var(--abyss); border:1px solid var(--line); border-radius:6px; padding:8px; }
+  .channel-tile canvas{ width:100%; height:56px; border-radius:4px; display:block; }
+  .channel-tile .cname{ font-size:11px; color:var(--foam); margin-top:6px; }
+  .channel-tile .cunit{ font-size:10px; color:var(--text-dim-2); }
+
+  .export-row{ display:flex; gap:8px; margin-top:6px; }
+  .btn{
+    background:var(--current); border:none; color:var(--text); padding:9px 14px; border-radius:6px; font-size:12.5px;
+    display:flex; align-items:center; gap:6px; flex:1; justify-content:center;
+  }
+  .btn:hover{ background:var(--surface); }
+  .btn.ghost{ background:none; border:1px solid var(--line); color:var(--text-dim); }
+  .btn.ghost:hover{ color:var(--text); border-color:var(--foam); }
+
+  .thermocline-tag{
+    display:inline-flex; align-items:center; gap:6px; font-size:11.5px; color:var(--coral);
+    background:rgba(255,122,77,0.1); padding:4px 9px; border-radius:100px; margin-bottom:14px;
+  }
+
+  ::-webkit-scrollbar{ width:8px; }
+  ::-webkit-scrollbar-thumb{ background:var(--line); border-radius:4px; }
+</style>
+</head>
+<body>
+
+<div class="shell">
+
+  <aside class="sidebar">
+    <div class="mark">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M2 12c2 0 2-3 4-3s2 3 4 3 2-3 4-3 2 3 4 3 2-3 4-3 2 3 4 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      LEHER
+    </div>
+
+    <div class="role-switch">
+      <div class="label">DASHBOARD</div>
+      <a class="role-pill active" href="leher_researcher.html"><svg viewBox="0 0 24 24" fill="none"><circle cx="10" cy="10" r="6" stroke="currentColor" stroke-width="1.4"/><line x1="14.5" y1="14.5" x2="20" y2="20" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>Researcher</a>
+      <a class="role-pill" href="leher_defence.html"><svg viewBox="0 0 24 24" fill="none"><path d="M12 2 L20 5 V11 C20 16 16.5 19.5 12 22 C7.5 19.5 4 16 4 11 V5 L12 2Z" stroke="currentColor" stroke-width="1.4"/></svg>Defence</a>
+      <a class="role-pill" href="leher_coastal_desktop.html"><svg viewBox="0 0 24 24" fill="none"><path d="M7 14c1-4 3-8 5-10 2 2 4 6 5 10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>Coastal</a>
+      <a class="role-pill" href="leher_industry.html"><svg viewBox="0 0 24 24" fill="none"><path d="M8 16V7l4-3 4 3v9" stroke="currentColor" stroke-width="1.4"/></svg>Industry</a>
+    </div>
+
+    <div class="section-nav">
+      <div class="label">RESEARCHER TOOLS</div>
+      <button class="nav-item active" data-tab="profile">Vertical Profile</button>
+      <button class="nav-item" data-tab="cross">Cross-Section / Transect</button>
+      <button class="nav-item" data-tab="metrics">Validation &amp; Metrics</button>
+      <button class="nav-item" data-tab="channels">Input Channel Viewer</button>
+    </div>
+
+    <div class="status-chip">
+      <div class="row1"><span class="dot"></span>Data current as of: <span class="num" id="dataDate">6 Sep 2026</span></div>
+      <div class="row2">Demo data — synthetic field for interaction preview. Connect the FastAPI layer for live OceanUNet output.</div>
+    </div>
+  </aside>
+
+  <div class="topbar">
+    <div class="tb-group">
+      <span class="tb-label">DATE</span>
+      <select class="tb-select" id="dateSelect">
+        <option>2026-09-06</option>
+        <option>2026-09-05</option>
+        <option>2026-09-04</option>
+        <option>2026-08-30</option>
+      </select>
+    </div>
+
+    <div class="depth-group">
+      <button class="play-btn" id="playBtn" title="Sweep top to bottom">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" id="playIcon"><path d="M2 1 L11 6 L2 11 Z"/></svg>
+      </button>
+      <span class="tb-label" style="flex-shrink:0;">DEPTH</span>
+      <input type="range" id="depthSlider" min="0" max="34" value="0" step="1">
+      <span class="depth-readout num" id="depthReadout">0.5 m</span>
+    </div>
+
+    <div class="depth-toggle">
+      <button class="active" id="btnNative35">35 native</button>
+      <button id="btnIncois15">15 INCOIS</button>
+    </div>
+
+    <div class="tb-group search-jump">
+      <span class="tb-label">JUMP TO</span>
+      <select class="tb-select" id="jumpSelect">
+        <option value="">— select port —</option>
+        <option value="19.0,72.8">Mumbai</option>
+        <option value="9.9,76.2">Kochi</option>
+        <option value="13.0,80.3">Chennai</option>
+        <option value="17.7,83.3">Visakhapatnam</option>
+        <option value="6.9,79.8">Colombo</option>
+        <option value="24.8,66.9">Karachi</option>
+      </select>
+    </div>
+  </div>
+
+  <main class="mapstage">
+    <canvas id="mapCanvas"></canvas>
+    <div class="map-hint" id="mapHint">Click anywhere on the domain to sample a vertical temperature profile at that point.</div>
+    <div class="demo-badge">Synthetic demo field</div>
+    <div class="map-legend">
+      <div class="legend-bar"></div>
+      <div class="legend-labels"><span>cold</span><span id="legendMid">temperature</span><span>warm</span></div>
+    </div>
+  </main>
+
+  <aside class="panel">
+
+    <!-- Vertical Profile -->
+    <div class="panel-tabsheet active" id="tab-profile">
+      <h2>Vertical Profile</h2>
+      <div class="sub">Click a point on the map to sample the reconstructed profile there.</div>
+      <div id="profileEmpty" class="empty-state">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 3v18M6 8l6-5 6 5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        No point selected yet.
+      </div>
+      <div id="profileContent" style="display:none;">
+        <div class="metric-row"><span class="k">Location</span><span class="v num" id="profLoc">—</span></div>
+        <div class="metric-row"><span class="k">Surface temp</span><span class="v num" id="profSurf">—</span></div>
+        <div class="metric-row"><span class="k">Thermocline depth</span><span class="v num" id="profThermo">—</span></div>
+        <div class="thermocline-tag" style="margin-top:16px;">● 100–300m band = steepest gradient</div>
+        <div class="chart-box">
+          <div class="title">Temperature vs depth</div>
+          <svg id="profileSvg" viewBox="0 0 300 340"></svg>
+        </div>
+        <div class="export-row">
+          <button class="btn ghost" id="exportProfileCsv">Download CSV</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cross section -->
+    <div class="panel-tabsheet" id="tab-cross">
+      <h2>Cross-Section / Transect</h2>
+      <div class="sub">Click two points on the map to draw a transect line.</div>
+      <div id="crossEmpty" class="empty-state">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M3 17 L21 7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="3" cy="17" r="2" fill="currentColor"/><circle cx="21" cy="7" r="2" fill="currentColor"/></svg>
+        Click a start point, then an end point.
+      </div>
+      <div id="crossContent" style="display:none;">
+        <div class="metric-row"><span class="k">Transect length</span><span class="v num" id="crossLen">—</span></div>
+        <div class="chart-box">
+          <div class="title">Depth (Y) × distance (X) × temperature (color)</div>
+          <canvas id="crossCanvas" width="300" height="220" style="width:100%; height:auto; border-radius:6px; border:1px solid var(--line);"></canvas>
+        </div>
+        <div class="export-row">
+          <button class="btn ghost" id="resetCross">Clear transect</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Metrics -->
+    <div class="panel-tabsheet" id="tab-metrics">
+      <h2>Validation &amp; Metrics</h2>
+      <div class="sub">RMSE, MAE, Bias, and Pearson r against ARGO, by depth.</div>
+      <div class="subtab-row">
+        <button class="active" data-metricview="curves">Metric curves</button>
+        <button data-metricview="argo">ARGO vs model</button>
+      </div>
+
+      <div id="metricview-curves">
+        <div class="chart-box">
+          <div class="title">RMSE (°C) by depth — <span id="metricDepthLabel">35 native depths</span></div>
+          <svg id="rmseSvg" viewBox="0 0 300 150"></svg>
+        </div>
+        <div class="chart-box">
+          <div class="title">Pearson r by depth</div>
+          <svg id="corrSvg" viewBox="0 0 300 150"></svg>
+        </div>
+        <div class="metric-row"><span class="k">Overall r</span><span class="v num">0.92</span></div>
+        <div class="metric-row"><span class="k">Upper 100m RMSE</span><span class="v num">0.62 °C</span></div>
+        <div class="metric-row"><span class="k">Depth levels shown</span><span class="v num" id="metricLevelCount">35</span></div>
+      </div>
+
+      <div id="metricview-argo" style="display:none;">
+        <div class="chart-box">
+          <div class="title">Predicted vs. observed (ARGO), all depths</div>
+          <svg id="argoSvg" viewBox="0 0 300 300"></svg>
+        </div>
+        <div class="metric-row"><span class="k">Sample floats</span><span class="v num">142</span></div>
+        <div class="metric-row"><span class="k">Correlation</span><span class="v num">r = 0.92</span></div>
+      </div>
+
+      <div class="export-row" style="margin-top:10px;">
+        <button class="btn ghost" id="exportMetricsCsv">Download metrics CSV</button>
+      </div>
+    </div>
+
+    <!-- Input channels -->
+    <div class="panel-tabsheet" id="tab-channels">
+      <h2>Input Channel Viewer</h2>
+      <div class="sub">The 12 surface signals the model saw, at this date.</div>
+      <div class="channel-grid" id="channelGrid"></div>
+    </div>
+
+  </aside>
+
+</div>
+
+<script>
+/* ================= synthetic ocean field ================= */
+const LAT_MIN=5, LAT_MAX=30, LON_MIN=45, LON_MAX=105;
+
+// 35 native depths (illustrative spacing, 0.5m to 902.3m)
+const DEPTHS35 = (() => {
+  const d = [];
+  for(let i=0;i<34;i++){ d.push(+(0.5 + Math.pow(i,1.9)*0.72).toFixed(1)); }
+  d.push(902.3);
+  return d;
+})();
+// 15 INCOIS standard depths (illustrative)
+const DEPTHS15 = [0.5,10,20,30,50,75,100,125,150,200,250,300,400,600,902.3];
+
+let activeDepths = DEPTHS35;
+let depthIdx = 0;
+
+function tempProfileFactor(depth){
+  if(depth<=50) return 1 - 0.05*(depth/50);
+  if(depth<=300) return 0.95 - 0.63*((depth-50)/250);
+  return 0.30*Math.exp(-(depth-300)/420);
+}
+function tempAt(lat, lon, depth){
+  const latN=(lat-LAT_MIN)/(LAT_MAX-LAT_MIN), lonN=(lon-LON_MIN)/(LON_MAX-LON_MIN);
+  const base = 27.5 - 3.2*latN + 1.8*Math.sin(lonN*6.2+latN*2.4) + 0.8*Math.cos(lonN*3.1);
+  const noise = Math.sin(lat*1.1)*Math.cos(lon*0.8)*0.9;
+  const surfaceTemp = base+noise;
+  const f = tempProfileFactor(depth);
+  return 3.5 + (surfaceTemp-3.5)*f;
+}
+function thermoclineDepth(lat,lon){
+  let maxGrad=-Infinity, bestDepth=DEPTHS35[10];
+  for(let i=1;i<DEPTHS35.length;i++){
+    const d0=DEPTHS35[i-1], d1=DEPTHS35[i];
+    const t0=tempAt(lat,lon,d0), t1=tempAt(lat,lon,d1);
+    const grad = Math.abs(t1-t0)/(d1-d0);
+    if(grad>maxGrad){ maxGrad=grad; bestDepth=(d0+d1)/2; }
+  }
+  return bestDepth;
+}
+
+/* colormap: abyss -> current -> surface -> foam -> coral */
+function colormap(t){ // t in [0,1]
+  const stops = [
+    [3,27,46],   // abyss
+    [11,90,122], // current
+    [30,150,176],// surface
+    [168,230,232],// foam
+    [255,122,77] // coral
+  ];
+  const seg = Math.min(3, Math.floor(t*4));
+  const localT = t*4 - seg;
+  const a = stops[seg], b = stops[seg+1];
+  const r = Math.round(a[0]+(b[0]-a[0])*localT);
+  const g = Math.round(a[1]+(b[1]-a[1])*localT);
+  const bl= Math.round(a[2]+(b[2]-a[2])*localT);
+  return `rgb(${r},${g},${bl})`;
+}
+
+/* ================= map canvas ================= */
+const canvas = document.getElementById('mapCanvas');
+const ctx = canvas.getContext('2d');
+let TMIN=2, TMAX=30;
+
+function resizeCanvas(){
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width; canvas.height = rect.height;
+  drawMap();
+}
+function pxToLatLon(px,py){
+  const lon = LON_MIN + (px/canvas.width)*(LON_MAX-LON_MIN);
+  const lat = LAT_MAX - (py/canvas.height)*(LAT_MAX-LAT_MIN);
+  return [lat,lon];
+}
+function latLonToPx(lat,lon){
+  const px = ((lon-LON_MIN)/(LON_MAX-LON_MIN))*canvas.width;
+  const py = ((LAT_MAX-lat)/(LAT_MAX-LAT_MIN))*canvas.height;
+  return [px,py];
+}
+
+const ports = [
+  {name:'Mumbai', lat:19.0, lon:72.8},
+  {name:'Kochi', lat:9.9, lon:76.2},
+  {name:'Chennai', lat:13.0, lon:80.3},
+  {name:'Visakhapatnam', lat:17.7, lon:83.3},
+  {name:'Colombo', lat:6.9, lon:79.8},
+  {name:'Karachi', lat:24.8, lon:66.9},
+];
+
+let markerA=null, markerB=null, profilePoint=null;
+
+function drawMap(){
+  const depth = activeDepths[depthIdx];
+  const cellSize = 9;
+  for(let py=0; py<canvas.height; py+=cellSize){
+    for(let px=0; px<canvas.width; px+=cellSize){
+      const [lat,lon] = pxToLatLon(px+cellSize/2, py+cellSize/2);
+      const t = tempAt(lat,lon,depth);
+      const norm = Math.max(0, Math.min(1, (t-TMIN)/(TMAX-TMIN)));
+      ctx.fillStyle = colormap(norm);
+      ctx.fillRect(px,py,cellSize+1,cellSize+1);
+    }
+  }
+  // graticule
+  ctx.strokeStyle = 'rgba(3,27,46,0.25)';
+  ctx.lineWidth = 1;
+  for(let lat=LAT_MIN; lat<=LAT_MAX; lat+=5){
+    const [,py] = latLonToPx(lat, LON_MIN);
+    ctx.beginPath(); ctx.moveTo(0,py); ctx.lineTo(canvas.width,py); ctx.stroke();
+  }
+  for(let lon=LON_MIN; lon<=LON_MAX; lon+=10){
+    const [px] = latLonToPx(LAT_MIN, lon);
+    ctx.beginPath(); ctx.moveTo(px,0); ctx.lineTo(px,canvas.height); ctx.stroke();
+  }
+  // ports
+  ports.forEach(p=>{
+    const [px,py] = latLonToPx(p.lat,p.lon);
+    ctx.beginPath(); ctx.arc(px,py,3.5,0,Math.PI*2);
+    ctx.fillStyle='#EAF6F6'; ctx.fill();
+    ctx.strokeStyle='rgba(3,27,46,0.6)'; ctx.lineWidth=1.2; ctx.stroke();
+    ctx.font='11px IBM Plex Sans'; ctx.fillStyle='rgba(234,246,246,0.75)';
+    ctx.fillText(p.name, px+7, py+4);
+  });
+  // markers
+  if(profilePoint){
+    const [px,py]=latLonToPx(profilePoint[0],profilePoint[1]);
+    drawMarker(px,py,'#FF7A4D');
+  }
+  if(markerA){
+    const [px,py]=latLonToPx(markerA[0],markerA[1]);
+    drawMarker(px,py,'#A8E6E8');
+  }
+  if(markerB){
+    const [px,py]=latLonToPx(markerB[0],markerB[1]);
+    drawMarker(px,py,'#A8E6E8');
+  }
+  if(markerA && markerB){
+    const [ax,ay]=latLonToPx(markerA[0],markerA[1]);
+    const [bx,by]=latLonToPx(markerB[0],markerB[1]);
+    ctx.strokeStyle='#A8E6E8'; ctx.lineWidth=1.6; ctx.setLineDash([5,4]);
+    ctx.beginPath(); ctx.moveTo(ax,ay); ctx.lineTo(bx,by); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+}
+function drawMarker(px,py,color){
+  ctx.beginPath(); ctx.arc(px,py,6,0,Math.PI*2);
+  ctx.strokeStyle=color; ctx.lineWidth=2; ctx.stroke();
+  ctx.beginPath(); ctx.arc(px,py,2,0,Math.PI*2);
+  ctx.fillStyle=color; ctx.fill();
+}
+
+/* ================= tab switching ================= */
+let activeTab = 'profile';
+document.querySelectorAll('.nav-item').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.nav-item').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    activeTab = btn.dataset.tab;
+    document.querySelectorAll('.panel-tabsheet').forEach(s=>s.classList.remove('active'));
+    document.getElementById('tab-'+activeTab).classList.add('active');
+    const hints = {
+      profile:'Click anywhere on the domain to sample a vertical temperature profile at that point.',
+      cross:'Click a start point, then an end point, to draw a transect.',
+      metrics:'Metrics reflect validation against ARGO floats — click the map to jump back to profiling.',
+      channels:'Input channel thumbnails are shown in the right panel — click the map to sample a profile.'
+    };
+    document.getElementById('mapHint').textContent = hints[activeTab];
+  });
+});
+
+/* ================= map click handling ================= */
+canvas.addEventListener('click', (e)=>{
+  const rect = canvas.getBoundingClientRect();
+  const px = e.clientX-rect.left, py = e.clientY-rect.top;
+  const [lat,lon] = pxToLatLon(px,py);
+
+  if(activeTab==='cross'){
+    if(!markerA || (markerA && markerB)){ markerA=[lat,lon]; markerB=null; }
+    else { markerB=[lat,lon]; }
+    drawMap();
+    if(markerA && markerB) renderCrossSection();
+  } else {
+    profilePoint=[lat,lon];
+    drawMap();
+    renderProfile(lat,lon);
+    if(activeTab!=='profile'){
+      document.querySelector('.nav-item[data-tab="profile"]').click();
+    }
+  }
+});
+
+document.getElementById('resetCross').addEventListener('click', ()=>{
+  markerA=null; markerB=null;
+  document.getElementById('crossContent').style.display='none';
+  document.getElementById('crossEmpty').style.display='block';
+  drawMap();
+});
+
+/* ================= vertical profile ================= */
+function renderProfile(lat,lon){
+  document.getElementById('profileEmpty').style.display='none';
+  document.getElementById('profileContent').style.display='block';
+  document.getElementById('profLoc').textContent = `${lat.toFixed(2)}°N, ${lon.toFixed(2)}°E`;
+  const surf = tempAt(lat,lon,activeDepths[0]);
+  document.getElementById('profSurf').textContent = surf.toFixed(2)+' °C';
+  const thermo = thermoclineDepth(lat,lon);
+  document.getElementById('profThermo').textContent = Math.round(thermo)+' m';
+
+  const svg = document.getElementById('profileSvg');
+  const W=300,H=340, padL=38,padR=14,padT=10,padB=24;
+  const maxDepth = 900;
+  const temps = DEPTHS35.map(d=>tempAt(lat,lon,d));
+  const tMin = Math.min(...temps)-1, tMax = Math.max(...temps)+1;
+
+  const x = t => padL + (t-tMin)/(tMax-tMin) * (W-padL-padR);
+  const y = d => padT + (d/maxDepth) * (H-padT-padB);
+
+  let path = DEPTHS35.map((d,i)=> `${i===0?'M':'L'}${x(temps[i]).toFixed(1)},${y(d).toFixed(1)}`).join(' ');
+
+  const thermoY0 = y(100), thermoY1 = y(300);
+
+  svg.innerHTML = `
+    <rect x="${padL}" y="${thermoY0}" width="${W-padL-padR}" height="${thermoY1-thermoY0}" fill="#FF7A4D" opacity="0.12"/>
+    <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${H-padB}" stroke="rgba(234,246,246,0.2)"/>
+    <line x1="${padL}" y1="${H-padB}" x2="${W-padR}" y2="${H-padB}" stroke="rgba(234,246,246,0.2)"/>
+    <path d="${path}" fill="none" stroke="#1E96B0" stroke-width="2"/>
+    <text x="${padL}" y="${H-6}" font-size="9" fill="rgba(234,246,246,0.4)">${tMin.toFixed(0)}°C</text>
+    <text x="${W-padR-24}" y="${H-6}" font-size="9" fill="rgba(234,246,246,0.4)">${tMax.toFixed(0)}°C</text>
+    <text x="2" y="${padT+8}" font-size="9" fill="rgba(234,246,246,0.4)">0m</text>
+    <text x="2" y="${H-padB}" font-size="9" fill="rgba(234,246,246,0.4)">900m</text>
+    <text x="${padL+4}" y="${(thermoY0+thermoY1)/2}" font-size="9" fill="#FF7A4D">thermocline</text>
+  `;
+
+  window._currentProfile = {lat,lon,depths:DEPTHS35,temps};
+}
+
+document.getElementById('exportProfileCsv').addEventListener('click', ()=>{
+  const p = window._currentProfile;
+  if(!p) return;
+  let csv = 'depth_m,temperature_c\n' + p.depths.map((d,i)=>`${d},${p.temps[i].toFixed(3)}`).join('\n');
+  downloadFile(`profile_${p.lat.toFixed(2)}_${p.lon.toFixed(2)}.csv`, csv);
+});
+
+/* ================= cross section ================= */
+function renderCrossSection(){
+  document.getElementById('crossEmpty').style.display='none';
+  document.getElementById('crossContent').style.display='block';
+
+  const [la,lo]=markerA, [lb,lob]=markerB;
+  const distKm = haversine(la,lo,lb,lob);
+  document.getElementById('crossLen').textContent = Math.round(distKm)+' km';
+
+  const cc = document.getElementById('crossCanvas');
+  const cctx = cc.getContext('2d');
+  const N=60, M=40;
+  const maxDepth=900;
+  for(let ix=0; ix<N; ix++){
+    const f = ix/(N-1);
+    const lat = la+(lb-la)*f, lon = lo+(lob-lo)*f;
+    for(let iy=0; iy<M; iy++){
+      const depth = (iy/(M-1))*maxDepth;
+      const t = tempAt(lat,lon,depth);
+      const norm = Math.max(0,Math.min(1,(t-TMIN)/(TMAX-TMIN)));
+      cctx.fillStyle = colormap(norm);
+      cctx.fillRect(ix*(cc.width/N), iy*(cc.height/M), cc.width/N+1, cc.height/M+1);
+    }
+  }
+}
+function haversine(lat1,lon1,lat2,lon2){
+  const R=6371, toRad=d=>d*Math.PI/180;
+  const dLat=toRad(lat2-lat1), dLon=toRad(lon2-lon1);
+  const a=Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+
+/* ================= depth slider / play ================= */
+const depthSlider = document.getElementById('depthSlider');
+const depthReadout = document.getElementById('depthReadout');
+function updateDepthUI(){
+  depthSlider.max = activeDepths.length-1;
+  if(depthIdx>activeDepths.length-1) depthIdx = activeDepths.length-1;
+  depthSlider.value = depthIdx;
+  depthReadout.textContent = activeDepths[depthIdx].toFixed(1)+' m';
+  drawMap();
+  if(profilePoint) renderProfile(profilePoint[0],profilePoint[1]);
+}
+depthSlider.addEventListener('input', ()=>{
+  depthIdx = +depthSlider.value;
+  updateDepthUI();
+});
+
+let playing=false, playTimer=null;
+document.getElementById('playBtn').addEventListener('click', ()=>{
+  playing = !playing;
+  document.getElementById('playIcon').innerHTML = playing
+    ? '<rect x="2" y="1" width="3" height="10"/><rect x="7" y="1" width="3" height="10"/>'
+    : '<path d="M2 1 L11 6 L2 11 Z"/>';
+  if(playing){
+    playTimer = setInterval(()=>{
+      depthIdx = (depthIdx+1) % activeDepths.length;
+      updateDepthUI();
+    }, 450);
+  } else {
+    clearInterval(playTimer);
+  }
+});
+
+document.getElementById('btnNative35').addEventListener('click', ()=>{
+  activeDepths = DEPTHS35;
+  document.getElementById('btnNative35').classList.add('active');
+  document.getElementById('btnIncois15').classList.remove('active');
+  document.getElementById('metricDepthLabel').textContent='35 native depths';
+  document.getElementById('metricLevelCount').textContent='35';
+  depthIdx=0; updateDepthUI(); renderMetrics();
+});
+document.getElementById('btnIncois15').addEventListener('click', ()=>{
+  activeDepths = DEPTHS15;
+  document.getElementById('btnIncois15').classList.add('active');
+  document.getElementById('btnNative35').classList.remove('active');
+  document.getElementById('metricDepthLabel').textContent='15 INCOIS depths';
+  document.getElementById('metricLevelCount').textContent='15';
+  depthIdx=0; updateDepthUI(); renderMetrics();
+});
+
+/* ================= jump to port ================= */
+document.getElementById('jumpSelect').addEventListener('change', (e)=>{
+  if(!e.target.value) return;
+  const [lat,lon] = e.target.value.split(',').map(Number);
+  profilePoint=[lat,lon];
+  drawMap();
+  renderProfile(lat,lon);
+  document.querySelector('.nav-item[data-tab="profile"]').click();
+});
+
+/* ================= metrics panel ================= */
+function renderMetrics(){
+  const depths = activeDepths;
+  const rmse = depths.map(d=> 0.35 + 0.9*Math.max(0, (1-tempProfileFactor(d))) * (d<400?1:0.5) + 0.05);
+  const corr = depths.map(d=> Math.max(0.55, 0.97 - 0.35*Math.max(0,(1-tempProfileFactor(d)))*(d<500?1:0.6)));
+
+  drawLineChart('rmseSvg', depths, rmse, 0, Math.max(...rmse)+0.2, '#FF7A4D', v=>v.toFixed(2));
+  drawLineChart('corrSvg', depths, corr, 0.5, 1.0, '#1E96B0', v=>v.toFixed(2));
+
+  // ARGO scatter
+  const svg = document.getElementById('argoSvg');
+  const pts = [];
+  for(let i=0;i<80;i++){
+    const obs = 3 + Math.random()*25;
+    const pred = obs + (Math.random()-0.5)*2.2;
+    pts.push([obs,pred]);
+  }
+  const W=300,H=300,pad=30;
+  const scale = v => pad + (v/30)*(W-2*pad);
+  let dots = pts.map(([o,p])=>`<circle cx="${scale(o).toFixed(1)}" cy="${(H-scale(p)).toFixed(1)}" r="2.3" fill="#A8E6E8" opacity="0.7"/>`).join('');
+  svg.innerHTML = `
+    <line x1="${pad}" y1="${H-pad}" x2="${W-pad}" y2="${pad}" stroke="rgba(234,246,246,0.25)" stroke-dasharray="4 4"/>
+    <line x1="${pad}" y1="${H-pad}" x2="${pad}" y2="${pad}" stroke="rgba(234,246,246,0.2)"/>
+    <line x1="${pad}" y1="${H-pad}" x2="${W-pad}" y2="${H-pad}" stroke="rgba(234,246,246,0.2)"/>
+    ${dots}
+    <text x="${pad}" y="${H-10}" font-size="9" fill="rgba(234,246,246,0.4)">observed (°C)</text>
+    <text x="4" y="${pad}" font-size="9" fill="rgba(234,246,246,0.4)">predicted</text>
+  `;
+}
+function drawLineChart(id, xs, ys, yMin, yMax, color, fmt){
+  const svg = document.getElementById(id);
+  const W=300,H=150, padL=32,padR=10,padT=10,padB=18;
+  const x = i => padL + (i/(xs.length-1))*(W-padL-padR);
+  const y = v => padT + (1-(v-yMin)/(yMax-yMin))*(H-padT-padB);
+  let path = ys.map((v,i)=>`${i===0?'M':'L'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+  svg.innerHTML = `
+    <line x1="${padL}" y1="${H-padB}" x2="${W-padR}" y2="${H-padB}" stroke="rgba(234,246,246,0.2)"/>
+    <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${H-padB}" stroke="rgba(234,246,246,0.2)"/>
+    <path d="${path}" fill="none" stroke="${color}" stroke-width="2"/>
+    <text x="2" y="${padT+8}" font-size="9" fill="rgba(234,246,246,0.4)">${fmt(yMax)}</text>
+    <text x="2" y="${H-padB}" font-size="9" fill="rgba(234,246,246,0.4)">${fmt(yMin)}</text>
+    <text x="${padL}" y="${H-4}" font-size="9" fill="rgba(234,246,246,0.4)">0m</text>
+    <text x="${W-padR-26}" y="${H-4}" font-size="9" fill="rgba(234,246,246,0.4)">900m</text>
+  `;
+}
+document.querySelectorAll('.subtab-row button').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.subtab-row button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    const view = btn.dataset.metricview;
+    document.getElementById('metricview-curves').style.display = view==='curves'?'block':'none';
+    document.getElementById('metricview-argo').style.display = view==='argo'?'block':'none';
+  });
+});
+document.getElementById('exportMetricsCsv').addEventListener('click', ()=>{
+  const depths=activeDepths;
+  const rmse = depths.map(d=> 0.35 + 0.9*Math.max(0,(1-tempProfileFactor(d)))*(d<400?1:0.5)+0.05);
+  const corr = depths.map(d=> Math.max(0.55, 0.97 - 0.35*Math.max(0,(1-tempProfileFactor(d)))*(d<500?1:0.6)));
+  let csv='depth_m,rmse_c,pearson_r\n'+depths.map((d,i)=>`${d},${rmse[i].toFixed(3)},${corr[i].toFixed(3)}`).join('\n');
+  downloadFile('evaluation_metrics_demo.csv', csv);
+});
+
+/* ================= input channel viewer ================= */
+const CHANNELS = [
+  {name:'SST', unit:'°C', freq:1.0, offset:0},
+  {name:'SSS', unit:'PSU', freq:0.6, offset:1},
+  {name:'SLA', unit:'m', freq:1.8, offset:2},
+  {name:'ADT', unit:'m', freq:1.3, offset:3},
+  {name:'u (current)', unit:'m/s', freq:2.1, offset:4},
+  {name:'v (current)', unit:'m/s', freq:2.4, offset:5},
+  {name:'u_g', unit:'m/s', freq:2.0, offset:6},
+  {name:'v_g', unit:'m/s', freq:2.3, offset:7},
+  {name:'u_wnd', unit:'m/s', freq:1.5, offset:8},
+  {name:'v_wnd', unit:'m/s', freq:1.6, offset:9},
+  {name:'ws', unit:'m/s', freq:1.1, offset:10},
+  {name:'n_obs', unit:'count', freq:3.0, offset:11},
+];
+function renderChannels(){
+  const grid = document.getElementById('channelGrid');
+  grid.innerHTML='';
+  CHANNELS.forEach(ch=>{
+    const tile = document.createElement('div');
+    tile.className='channel-tile';
+    tile.innerHTML = `<canvas></canvas><div class="cname">${ch.name}</div><div class="cunit">${ch.unit}</div>`;
+    grid.appendChild(tile);
+    const cvs = tile.querySelector('canvas');
+    cvs.width=140; cvs.height=56;
+    const cctx = cvs.getContext('2d');
+    for(let x=0;x<140;x+=4){
+      for(let y=0;y<56;y+=4){
+        const latN=y/56, lonN=x/140;
+        const v = Math.sin(lonN*6*ch.freq+ch.offset)*Math.cos(latN*5*ch.freq-ch.offset) *0.5+0.5;
+        cctx.fillStyle = colormap(v);
+        cctx.fillRect(x,y,5,5);
+      }
+    }
+  });
+}
+
+/* ================= init ================= */
+window.addEventListener('resize', resizeCanvas);
+function downloadFile(name, content){
+  const blob = new Blob([content], {type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href=url; a.download=name; a.click();
+  URL.revokeObjectURL(url);
+}
+
+resizeCanvas();
+renderMetrics();
+renderChannels();
+// seed an initial profile near the domain center so the panel isn't empty on load
+profilePoint = [17, 75];
+renderProfile(17,75);
+drawMap();
+</script>
+
+</body>
+</html>
