@@ -59,8 +59,8 @@ class OceanUNetThermoclineAttention(nn.Module):
         self, 
         in_channels: int = 12, 
         out_channels: int = 35,
-        thermocline_start_idx: int = 11,  # Approx 50m depth index
-        thermocline_end_idx: int = 24     # Approx 200m depth index
+        thermocline_start_idx: int = 16,  # Approx 50m depth index
+        thermocline_end_idx: int = 26     # Approx 200m depth index
     ):
         super().__init__()
         self.thermocline_start = thermocline_start_idx
