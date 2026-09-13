@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LEHER | Ocean Intelligence, Bathymetry & Multi-Sector Analytics</title>
+  <meta name="description" content="LEHER — Next-generation ocean intelligence platform for Maritime Defense, Marine Research, Meteorology, Deep-Sea Mining, and Vessel Route Optimization." />
+  <link rel="stylesheet" href="/src/styles/glassmorphism.css" />
+  <link rel="stylesheet" href="/src/styles/dashboard-pages.css" />
+</head>
+<body>
+
+  <!--
+    LAYER STACK (bottom → top)
+    z -2  scroll-canvas   Fixed full-viewport deep ocean video frames
+    z -1  ripple-canvas   Fixed interactive water ripple canvas
+    z  0  .overlay-bg     Fixed dark vignette for legibility
+    z  2  .app-container  All scrollable UI
+  -->
+
+  <!-- Deep ocean scroll-driven video background -->
+  <canvas id="scroll-canvas"></canvas>
+
+  <!-- Interactive water ripple canvas -->
+  <canvas id="ripple-canvas"></canvas>
+
+  <!-- Soft dark vignette overlay -->
+  <div class="overlay-bg"></div>
+
+  <!-- Frame preload progress overlay -->
+  <div id="frame-loader" style="
+    position:fixed;inset:0;z-index:500;
+    background:rgba(1,7,16,0.92);
+    display:flex;flex-direction:column;
+    align-items:center;justify-content:center;
+    gap:1.2rem;
+    font-family:'Space Grotesk',sans-serif;
+    transition:opacity 0.8s ease;
+  ">
+    <div style="font-size:2.2rem;font-weight:800;color:#00eeff;letter-spacing:.05em;">LEHER</div>
+    <div style="color:#9ab8d8;font-size:.9rem;letter-spacing:.12em;text-transform:uppercase;">Loading Ocean Frames</div>
+    <div style="width:260px;height:4px;background:rgba(0,238,255,0.12);border-radius:4px;overflow:hidden;">
+      <div id="frame-progress-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#00eeff,#00ffd5);border-radius:4px;transition:width .2s ease;"></div>
+    </div>
+    <div id="frame-progress-pct" style="font-size:.78rem;color:#5a78a8;">0 / 240</div>
+  </div>
+
+  <!-- ── VIZ POP-OUT MODAL ── -->
+  <div id="viz-modal">
+    <div class="viz-modal-box">
+      <div class="viz-modal-header">
+        <span class="viz-modal-title" id="viz-modal-title">Chart Detail</span>
+        <button class="viz-modal-close" onclick="document.getElementById('viz-modal').classList.remove('open')">✕</button>
+      </div>
+      <div class="viz-modal-body" id="viz-modal-body"></div>
+    </div>
+  </div>
+
+  <div class="app-container">
+
+    <!-- ── NAVIGATION ── -->
+    <nav class="navbar glass-card">
+      <a href="#" class="brand-logo">
+        <div class="wave-logo-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round">
+            <path d="M2 12c2.5-3 5-3 7.5 0s5 3 7.5 0 5-3 7.5 0"/>
+            <path d="M2 17c2.5-3 5-3 7.5 0s5 3 7.5 0 5-3 7.5 0"/>
+          </svg>
+        </div>
+        LEHER<span class="gradient-text">.OCEAN</span>
+      </a>
+
+      <ul class="nav-links">
+        <li><a href="#hero"           class="nav-link">Overview</a></li>
+        <li><a href="#visualizations" class="nav-link">Analytics</a></li>
+        <li><a href="#mapping"        class="nav-link">3D Bathymetry</a></li>
+        <li><a href="#pledge"         class="nav-link">Pledge Node</a></li>
+      </ul>
+
+      <div style="display:flex;align-items:center;gap:1rem;">
+        <button class="audio-toggle-btn audio-muted" id="audio-toggle">
+          <div class="audio-icon-wave">
+            <span class="audio-bar"></span>
+            <span class="audio-bar"></span>
+            <span class="audio-bar"></span>
+          </div>
+          <span id="audio-label">Hydro-Sound OFF</span>
+        </button>
+
+        <button class="nav-auth-btn" id="nav-login-btn">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+          </svg>
+          Login / Admin
+        </button>
+      </div>
+    </nav>
+
+    <!-- ── PAGE TAB NAVIGATION ── -->
+    <div id="page-tab-nav">
+      <button class="page-tab active" data-page="home" onclick="window.leherRouter&&window.leherRouter.navigate('home')">
+        <span class="tab-icon">🏠</span> Home
+      </button>
+      <button class="page-tab" data-page="hub" onclick="window.leherRouter&&window.leherRouter.navigate('hub')">
+        <span class="tab-icon">🌊</span> Ocean Hub
+      </button>
+      <button class="page-tab" data-page="fisheries" onclick="window.leherRouter&&window.leherRouter.navigate('fisheries')">
+        <span class="tab-icon">🐟</span> Fisheries
+      </button>
+      <button class="page-tab" data-page="navy" onclick="window.leherRouter&&window.leherRouter.navigate('navy')">
+        <span class="tab-icon">⚓</span> Navy & Defense
+      </button>
+      <button class="page-tab" data-page="research" onclick="window.leherRouter&&window.leherRouter.navigate('research')">
+        <span class="tab-icon">🔬</span> Research
+      </button>
+      <button class="page-tab" data-page="meteo" onclick="window.leherRouter&&window.leherRouter.navigate('meteo')">
+        <span class="tab-icon">🌡️</span> Meteorology
+      </button>
+      <button class="page-tab" data-page="mining" onclick="window.leherRouter&&window.leherRouter.navigate('mining')">
+        <span class="tab-icon">⛏️</span> Mining
+      </button>
+      <button class="page-tab" data-page="vessel" onclick="window.leherRouter&&window.leherRouter.navigate('vessel')">
+        <span class="tab-icon">🚢</span> Vessel Routing
+      </button>
+    </div>
+
+    <!-- ══ HOME PAGE ══ -->
+    <section class="leher-page active" data-page="home">
+
+    <!-- Telemetry alert banner -->
+    <div class="alert-telemetry-banner">
+      <div class="alert-telemetry-content">
+        <span class="alert-dot"></span>
+        <strong style="color:var(--neon-warning)">EARLY WARNING TELEMETRY:</strong>
+        <span id="alert-banner-text">INDIAN NAVY: Submarine stealth corridor active — Arabian Sea. Thermocline depth optimal.</span>
+      </div>
+      <span style="font-family:monospace;font-size:0.78rem;color:var(--text-muted)">INCOIS BUOY #42</span>
+    </div>
+
+    <!-- ── HERO — full viewport height, title + subtitle only ── -->
+    <section class="hero-section" id="hero">
+      <div class="hero-text-block">
+
+        <div class="hero-eyebrow" id="persona-badge">
+          <span class="badge-pulse-dot"></span>
+          Deep Ocean Spatial Intelligence
+        </div>
+
+        <h1 class="hero-title">
+          Reconstructing the<br>
+          <span class="gradient-glow-text" id="persona-title">Abyssal Frontiers</span>
+        </h1>
+
+        <p class="hero-subtitle" id="persona-desc">
+          Real-time hydro-acoustic sonar mapping, marine anomaly tracking, and
+          multi-sector ocean intelligence — powered by spatial glassmorphic UI
+          and interactive liquid water physics.
+        </p>
+
+        <div class="hero-cta-group">
+          <button class="spatial-btn" id="btn-reconstruct-hero">
+            <svg class="btn-icon-sonar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>
+            </svg>
+            Ocean Mapping &amp; Reconstruction
+          </button>
+          <a href="#visualizations" class="secondary-glass-btn">View Analytics</a>
+        </div>
+
+        <!-- Scroll cue -->
+        <div class="scroll-cue" style="margin-top:3rem;">
+          <span>Scroll to dive deeper</span>
+          <div class="scroll-cue-arrow"></div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ── SECTOR PERSONA SELECTOR ── -->
+    <section class="persona-selector-section">
+      <div class="persona-tabs-container">
+        <button class="persona-tab active" data-persona="navy">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+          Indian Navy &amp; Defense
+        </button>
+        <button class="persona-tab" data-persona="research">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+          Marine Research
+        </button>
+        <button class="persona-tab" data-persona="meteorology">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.5 19.5 15.4 17.4M20 14h-3M17.5 8.5l-2.1 2.1M14 6V3M8.5 8.5 10.6 10.6M6 14H3M8.5 19.5l2.1-2.1M12 18a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/></svg>
+          Meteorology &amp; Tsunami
+        </button>
+        <button class="persona-tab" data-persona="mining">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h12l4 6-10 12L2 9z"/></svg>
+          Deep-Sea Mining
+        </button>
+        <button class="persona-tab" data-persona="vessel">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 21h20M5 18l1.5-6h11L19 18M12 4v8M8 8h8"/></svg>
+          Vessel Route Routing
+        </button>
+      </div>
+    </section>
+
+    <!-- ── VITALS METRICS GRID ── -->
+    <section class="vitals-grid-section">
+      <div class="vitals-grid">
+        <div class="glass-card vital-card neon-aura-card">
+          <span class="vital-label" id="val-label-0">Submarine Sonar Clarity</span>
+          <span class="vital-value" id="val-metric-0">94.2%</span>
+          <span class="vital-trend" id="val-trend-0">▲ Optimal Range</span>
+        </div>
+        <div class="glass-card vital-card neon-aura-card">
+          <span class="vital-label" id="val-label-1">Thermocline Layer</span>
+          <span class="vital-value" id="val-metric-1">-180m</span>
+          <span class="vital-trend" id="val-trend-1">▲ Layer Stealth High</span>
+        </div>
+        <div class="glass-card vital-card neon-aura-card">
+          <span class="vital-label" id="val-label-2">Tactical Wave Height</span>
+          <span class="vital-value" id="val-metric-2">1.4m</span>
+          <span class="vital-trend" id="val-trend-2">▼ State 3 Sea</span>
+        </div>
+        <div class="glass-card vital-card neon-aura-card">
+          <span class="vital-label" id="val-label-3">Acoustic Noise Index</span>
+          <span class="vital-value" id="val-metric-3">-42 dB</span>
+          <span class="vital-trend" id="val-trend-3">▲ Low Ambient Interference</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── ANALYTICS CHARTS GRID ── -->
+    <section class="charts-section" id="visualizations">
+      <div class="section-header">
+        <span class="section-subtitle">Data Visualizations &amp; Telemetry</span>
+        <h2 class="section-title">Oceanographic Analytics &amp; Graphs</h2>
+        <p class="section-desc">
+          Spectrographic mineral signatures, Depth vs. Temperature CTD profiles,
+          astronomical tide forecasts, and Potential Fishing Zones (PFZ).
+        </p>
+      </div>
+
+      <div class="charts-grid">
+        <div class="glass-card chart-card neon-aura-card">
+          <div class="chart-card-header">
+            <span class="chart-card-title">Depth vs. Temperature (CTD Profile)</span>
+            <span class="hud-coord-tag">CTD SENSOR #09</span>
+          </div>
+          <div class="chart-wrapper"><canvas id="chart-depth-temp"></canvas></div>
+        </div>
+
+        <div class="glass-card chart-card neon-aura-card">
+          <div class="chart-card-header">
+            <span class="chart-card-title">Seabed Spectrographic Mineral Reflectance</span>
+            <span class="hud-coord-tag">350–1100nm</span>
+          </div>
+          <div class="chart-wrapper"><canvas id="chart-spectro"></canvas></div>
+        </div>
+
+        <div class="glass-card chart-card neon-aura-card">
+          <div class="chart-card-header">
+            <span class="chart-card-title">Ocean State &amp; Astronomical Tides</span>
+            <span class="hud-coord-tag">FORECAST 24H</span>
+          </div>
+          <div class="chart-wrapper"><canvas id="chart-tides"></canvas></div>
+        </div>
+
+        <div class="glass-card chart-card neon-aura-card">
+          <div class="chart-card-header">
+            <span class="chart-card-title">Potential Fishing Zones (PFZ Hotspots)</span>
+            <span class="hud-coord-tag">SST vs CHLOROPHYLL</span>
+          </div>
+          <div class="chart-wrapper"><canvas id="chart-pfz"></canvas></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── 3D BATHYMETRIC SCANNER ── -->
+    <section class="mapping-section" id="mapping">
+      <div class="section-header">
+        <span class="section-subtitle">3D Seabed Telemetry</span>
+        <h2 class="section-title">Spatial Bathymetric Floor Scanner</h2>
+        <p class="section-desc">
+          Interact with 3D ocean elevation point clouds, sonar radar, and trigger bathymetric reconstruction pings.
+        </p>
+      </div>
+
+      <div class="mapping-console-card glass-card neon-aura-card">
+        <div class="viewport-wrapper">
+          <canvas id="mapping-canvas"></canvas>
+          <div class="hud-overlay">
+            <div class="hud-top-bar">
+              <span class="hud-coord-tag" id="hud-coords">LAT 24.502° N | LON 154.218° W | DEPTH -5,820m</span>
+              <span class="hud-status-tag">
+                <span class="badge-pulse-dot"></span>
+                LEHER SONAR ARRAY ONLINE
+              </span>
+            </div>
+            <div class="hud-radar-sweep"><div class="radar-hand"></div></div>
+          </div>
+        </div>
+
+        <div class="mapping-controls-sidebar">
+          <div>
+            <h4 class="control-group-title">Visualization Layer</h4>
+            <div class="mode-selector-grid">
+              <button class="mode-btn active" data-mode="bathymetry">3D Seabed</button>
+              <button class="mode-btn" data-mode="thermal">Thermal Heatmap</button>
+              <button class="mode-btn" data-mode="species">Coral &amp; PFZ</button>
+              <button class="mode-btn" data-mode="plastic">Mining &amp; Debris</button>
+            </div>
+          </div>
+
+          <div class="reconstruction-action-box">
+            <p style="font-size:.84rem;color:var(--text-muted)">
+              Triggers hydro-acoustic pulse, recalculating seabed point cloud mesh points.
+            </p>
+            <button class="spatial-btn reconstruct-main-btn" id="btn-reconstruct-console">
+              <svg class="btn-icon-sonar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+              </svg>
+              Reconstruct Ocean Sector
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── PLEDGE PORTAL ── -->
+    <section class="pledge-section" id="pledge">
+      <div class="glass-card neon-aura-card pledge-glass-banner">
+        <div>
+          <span class="section-subtitle">Take Action</span>
+          <h2 class="section-title" style="font-size:2.3rem;text-align:left">LEHER Ocean Sentinel Node</h2>
+          <p class="card-text">
+            Join ocean guardians and marine research stations worldwide. Deploy a telemetry pledge
+            node on the global ocean coordinate grid.
+          </p>
+          <form id="pledge-form" class="pledge-form-group">
+            <input type="text" id="pledge-name" class="pledge-input"
+              placeholder="Guardian Name / Navy Station / Research Vessel…" required />
+            <button class="spatial-btn" id="btn-submit-pledge" type="submit">
+              <svg class="btn-icon-sonar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                <circle cx="12" cy="10" r="3"/>
+              </svg>
+              Deploy Sentinel Node
+            </button>
+          </form>
+        </div>
+
+        <div class="map-node-display">
+          <svg class="world-svg-overlay" viewBox="0 0 1000 500" fill="none" stroke="var(--neon-cyan)" stroke-width="1.5">
+            <path d="M150 120 Q250 100 300 160 T200 320 Q120 280 150 120Z"/>
+            <path d="M550 100 Q750 80 850 180 T700 350 Q550 300 550 100Z"/>
+            <path d="M350 250 Q420 230 450 350 T380 450 Q320 380 350 250Z"/>
+          </svg>
+          <div id="nodes-container">
+            <div class="pledge-node-pulse" style="top:35%;left:28%" title="Indian Navy Submarine Command"></div>
+            <div class="pledge-node-pulse" style="top:48%;left:72%" title="INCOIS Tsunami Warning Array"></div>
+            <div class="pledge-node-pulse" style="top:62%;left:45%" title="Seabed Mining Vessel Samudra"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── FOOTER ── -->
+    <footer class="footer">
+      <div>&copy; 2026 LEHER Ocean Intelligence Platform · Maritime Defense · Research · Meteorology · Mining · Shipping</div>
+      <div class="footer-links">
+        <a href="#" class="footer-link">INCOIS Telemetry</a>
+        <a href="#" class="footer-link">Bathymetry API</a>
+        <a href="#" class="footer-link">Security Clearance</a>
+      </div>
+    </footer>
+
+    </section><!-- /page-home -->
+
+    <!-- ══ OCEAN HUB PAGE ══ -->
+    <section class="leher-page" data-page="hub" id="page-hub"></section>
+
+    <!-- ══ FISHERIES PAGE ══ -->
+    <section class="leher-page" data-page="fisheries" id="page-fisheries"></section>
+
+    <!-- ══ NAVY PAGE ══ -->
+    <section class="leher-page" data-page="navy" id="page-navy"></section>
+
+    <!-- ══ RESEARCH PAGE ══ -->
+    <section class="leher-page" data-page="research" id="page-research"></section>
+
+    <!-- ══ METEOROLOGY PAGE ══ -->
+    <section class="leher-page" data-page="meteo" id="page-meteo"></section>
+
+    <!-- ══ MINING PAGE ══ -->
+    <section class="leher-page" data-page="mining" id="page-mining"></section>
+
+    <!-- ══ VESSEL PAGE ══ -->
+    <section class="leher-page" data-page="vessel" id="page-vessel"></section>
+
+  </div><!-- /app-container -->
+
+  <!-- ── LOGIN / ADMIN MODAL ── -->
+  <div class="auth-modal" id="auth-modal">
+    <div class="glass-card auth-card">
+      <div class="auth-header">
+        <h3 class="auth-title">LEHER Clearance Login</h3>
+        <button class="modal-close-btn" id="auth-modal-close">&times;</button>
+      </div>
+      <form id="auth-form" class="auth-form-group">
+        <div>
+          <label class="auth-label">Select Sector Role</label>
+          <select class="auth-select" id="auth-role" required>
+            <option value="navy">Indian Navy / Maritime Defense Officer</option>
+            <option value="researcher">Oceanographic Research Scientist</option>
+            <option value="meteorologist">INCOIS Meteorological Analyst</option>
+            <option value="mining">Deep-Sea Mining Operations Chief</option>
+            <option value="captain">Shipping Fleet Captain</option>
+            <option value="admin">LEHER System Administrator</option>
+          </select>
+        </div>
+        <div>
+          <label class="auth-label">Officer Email / ID</label>
+          <input type="email" class="auth-input" id="auth-email" placeholder="officer@leher.gov.in" required />
+        </div>
+        <div>
+          <label class="auth-label">Clearance Key</label>
+          <input type="password" class="auth-input" placeholder="••••••••••••" required />
+        </div>
+        <button type="submit" class="spatial-btn" style="width:100%;margin-top:.8rem">
+          Authenticate &amp; Access Dashboard
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <script type="module" src="/src/scripts/app.js"></script>
+</body>
+</html>
