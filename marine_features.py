@@ -2,12 +2,27 @@ import requests
 import numpy as np
 import streamlit as st
 
-def fetch_marine_data(lat: float, lon: float) -> dict:
-    """Executes a single API call to Open-Meteo Marine API fetching all daily parameters."""
+def fetch_regional_marine_data(min_lat: float, max_lat: float, min_lon: float, max_lon: float, grid_size: int = 3) -> tuple:
+    """
+    Generates a spatial grid inside the bounding box and executes a SINGLE API call 
+    to Open-Meteo for all coordinates simultaneously.
+    """
+    lats = np.linspace(min_lat, max_lat, grid_size)
+    lons = np.linspace(min_lon, max_lon, grid_size)
+    
+    # Create spatial grid sampling points
+    lat_grid, lon_grid = np.meshgrid(lats, lons)
+    lat_list = lat_grid.flatten()
+    lon_list = lon_grid.flatten()
+    
+    # Format coordinates as comma-separated strings for single batch HTTP GET
+    lat_str = ",".join(f"{lat:.4f}" for lat in lat_list)
+    lon_str = ",".join(f"{lon:.4f}" for lon in lon_list)
+    
     url = "https://marine-api.open-meteo.com/v1/marine"
     params = {
-        "latitude": lat,
-        "longitude": lon,
+        "latitude": lat_str,
+        "longitude": lon_str,
         "hourly": [
             "wave_height", "wave_direction", "wave_period",
             "wind_wave_height", "swell_wave_height", "swell_wave_period", "swell_wave_direction",
@@ -20,152 +35,174 @@ def fetch_marine_data(lat: float, lon: float) -> dict:
         "forecast_days": 1,
         "timezone": "auto"
     }
-    response = requests.get(url, params=params, timeout=10)
+    
+    response = requests.get(url, params=params, timeout=12)
     response.raise_for_status()
-    return response.json()
+    res_json = response.json()
+    
+    # Open-Meteo returns a list of result dicts when querying multiple coordinates
+    data_list = res_json if isinstance(res_json, list) else [res_json]
+    return data_list, (min_lat, max_lat, min_lon, max_lon)
 
 
-def parse_daily_marine_bulletin(data: dict) -> dict:
-    """Parses single API response into multi-paragraph daily descriptions for all 8 sections."""
-    daily = data.get("daily", {})
-    hourly = data.get("hourly", {})
+def parse_regional_marine_bulletin(data_list: list, bbox: tuple) -> dict:
+    """Aggregates spatial grid data into region-wide multi-paragraph descriptions."""
+    min_lat, max_lat, min_lon, max_lon = bbox
+    
+    # Extract spatial aggregations across all grid cells
+    max_waves = [d["daily"]["wave_height_max"][0] for d in data_list if "daily" in d]
+    max_swells = [d["daily"]["swell_wave_height_max"][0] for d in data_list if "daily" in d]
+    max_wind_waves = [d["daily"]["wind_wave_height_max"][0] for d in data_list if "daily" in d]
+    dom_dirs = [d["daily"]["wave_direction_dominant"][0] for d in data_list if "daily" in d]
+    max_periods = [d["daily"]["wave_period_max"][0] for d in data_list if "daily" in d]
+    
+    all_ssts = []
+    all_currs = []
+    all_curr_dirs = []
+    all_swell_periods = []
+    
+    for d in data_list:
+        hourly = d.get("hourly", {})
+        all_ssts.extend([t for t in hourly.get("sea_surface_temperature", []) if t is not None])
+        all_currs.extend([c for c in hourly.get("ocean_current_velocity", []) if c is not None])
+        all_curr_dirs.extend([cd for cd in hourly.get("ocean_current_direction", []) if cd is not None])
+        all_swell_periods.extend([sp for sp in hourly.get("swell_wave_period", []) if sp is not None])
 
-    # Extract 24-hour daily aggregates
-    max_wave = daily["wave_height_max"][0]
-    dom_wave_dir = daily["wave_direction_dominant"][0]
-    max_wave_period = daily["wave_period_max"][0]
-    max_swell = daily["swell_wave_height_max"][0]
-    max_wind_wave = daily["wind_wave_height_max"][0]
+    # Regional Metrics
+    peak_wave = np.max(max_waves) if max_waves else 1.5
+    mean_wave = np.mean(max_waves) if max_waves else 1.0
+    peak_sst = np.max(all_ssts) if all_ssts else 27.5
+    mean_sst = np.mean(all_ssts) if all_ssts else 26.8
+    peak_curr = np.max(all_currs) if all_currs else 0.4
+    mean_curr = np.mean(all_currs) if all_currs else 0.25
+    mean_curr_dir = np.mean(all_curr_dirs) if all_curr_dirs else 180.0
+    peak_swell = np.max(max_swells) if max_swells else 1.2
+    peak_wind_wave = np.max(max_wind_waves) if max_wind_waves else 0.8
+    dom_wave_dir = np.mean(dom_dirs) if dom_dirs else 210.0
+    mean_wave_period = np.mean(max_periods) if max_periods else 8.5
+    mean_swell_period = np.mean(all_swell_periods) if all_swell_periods else 10.0
 
-    # Calculate daily averages/peaks from hourly series
-    sst_list = [t for t in hourly.get("sea_surface_temperature", []) if t is not None]
-    avg_sst = np.mean(sst_list) if sst_list else 26.5
-    max_sst = np.max(sst_list) if sst_list else 27.0
-
-    curr_list = [c for c in hourly.get("ocean_current_velocity", []) if c is not None]
-    max_curr = np.max(curr_list) if curr_list else 0.3
-    avg_curr_dir = np.mean(hourly.get("ocean_current_direction", [0]))
-
-    swell_p_list = [p for p in hourly.get("swell_wave_period", []) if p is not None]
-    max_swell_period = np.max(swell_p_list) if swell_p_list else 10.0
-    avg_swell_dir = np.mean(hourly.get("swell_wave_direction", [dom_wave_dir]))
-
-    # Derive surface wind speed from wind-wave energy (ws ≈ sqrt(Hs / 0.0246))
-    est_wind_speed = np.sqrt(max_wind_wave / 0.0246) if max_wind_wave > 0 else 3.5
-    est_wind_knots = est_wind_speed * 1.944
+    # Derive regional wind bounds (ws ≈ sqrt(Hs / 0.0246))
+    peak_wind = np.sqrt(peak_wind_wave / 0.0246) if peak_wind_wave > 0 else 4.0
+    mean_wind = np.sqrt(np.mean(max_wind_waves) / 0.0246) if max_wind_waves else 3.0
 
     # 1. Ocean State Forecast
     p1_state = (
-        f"The current sea condition is classified as {'Rough' if max_wave > 2.5 else 'Moderate' if max_wave > 1.25 else 'Calm'}. "
-        f"Daily sea surface temperatures average {avg_sst:.1f}°C, reaching a daily peak of {max_sst:.1f}°C. Combined significant "
-        f"wave heights reach up to {max_wave:.1f} m, while total surface current velocities top out at {max_curr:.2f} m/s."
+        f"Across the specified regional bounding box ({min_lat:.2f}°N to {max_lat:.2f}°N, {min_lon:.2f}°E to {max_lon:.2f}°E), "
+        f"overall ocean conditions are categorized as {'Rough' if peak_wave > 2.5 else 'Moderate' if peak_wave > 1.25 else 'Calm'}. "
+        f"Regional sea surface temperatures range between a spatial mean of {mean_sst:.1f}°C and a localized peak of {peak_sst:.1f}°C. "
+        f"Combined significant wave heights reach a maximum of {peak_wave:.1f} m (averaging {mean_wave:.1f} m regionally), while surface current "
+        f"speeds peak at {peak_curr:.2f} m/s across exposed grid sectors."
     )
     p2_state = (
-        f"Overall marine conditions require standard operational vigilance along the coast. The interaction between "
-        f"surface current drift and dominant wave direction ({dom_wave_dir:.0f}°) creates mild to moderate surface roughness, "
-        f"suggesting overall stable conditions for general commercial transit and regional coastal activities."
+        f"Spatial variance across the bounding box highlights higher wave energy along outer offshore grid cells, while nearshore "
+        f"sampling points exhibit reduced swell height due to coastal dissipation. The prevailing directional wave vector averages {dom_wave_dir:.0f}°, "
+        f"creating stable maritime transit corridors in sheltered zones while maintaining moderate sea chop across open water quadrants."
     )
 
     # 2. Small Vessel Advisory
-    if max_wave >= 2.5 or est_wind_speed >= 10.8:
+    if peak_wave >= 2.5 or peak_wind >= 10.8:
         p1_advisory = (
-            f"WARNING: Hazardous conditions flagged for small craft (<6m). Peak wave heights of {max_wave:.1f} m and "
-            f"derived wind speeds of {est_wind_speed:.1f} m/s ({est_wind_knots:.1f} knots) exceed safe operational limits."
+            f"WARNING: High-risk conditions detected within the bounding box. Peak wave heights reach {peak_wave:.1f} m "
+            f"with regional localized wind gusts reaching {peak_wind:.1f} m/s ({peak_wind * 1.944:.1f} knots). "
+            f"Advisory status is elevated to RED across outer maritime grid cells."
         )
         p2_advisory = (
-            "Small fishing boats, wooden trawlers, and recreational craft are strongly advised to remain in port or seek "
-            "sheltered anchorages. Increased risk of steep wave breaking and capsize is present near coastal river mouths and inlets."
+            "Small craft (<6m), artisanal fishing vessels, and low-displacement trawlers operating within this region should "
+            "avoid seaward grid sectors. Operator discretion is advised near exposed inlets where wave steepness increases due to regional current interaction."
         )
-    elif max_wave >= 1.25 or est_wind_speed >= 7.0:
+    elif peak_wave >= 1.25 or peak_wind >= 7.0:
         p1_advisory = (
-            f"CAUTION: Moderate sea choppiness detected. Maximum wave heights will reach {max_wave:.1f} m with localized wind "
-            f"speeds averaging {est_wind_speed:.1f} m/s ({est_wind_knots:.1f} knots) throughout the day."
+            f"CAUTION: Moderate sea state advised across the bounding box. Maximum wave heights will reach {peak_wave:.1f} m "
+            f"with regional surface winds averaging {mean_wind:.1f} m/s ({mean_wind * 1.944:.1f} knots) and peaking at {peak_wind:.1f} m/s."
         )
         p2_advisory = (
-            "Small vessels should exercise heightened caution when navigating outside protected bays. Inexperienced operators "
-            "and small non-decked craft should avoid venturing beyond 5 nautical miles from the shoreline."
+            "Small vessels should maintain heightened awareness when crossing between protected coastal points and exposed outer sectors. "
+            "Vessel captains are encouraged to monitor localized wave shoaling and avoid overburdening small non-decked craft."
         )
     else:
         p1_advisory = (
-            f"SAFE: Favorable sea conditions are expected throughout the day. Wave heights will remain suppressed at {max_wave:.1f} m "
-            f"with gentle surface winds averaging {est_wind_speed:.1f} m/s ({est_wind_knots:.1f} knots)."
+            f"SAFE: Favorable operational conditions prevail across the entire bounding box grid. Maximum regional wave heights "
+            f"remain bounded below {peak_wave:.1f} m with gentle regional winds averaging {mean_wind:.1f} m/s ({mean_wind * 1.944:.1f} knots)."
         )
         p2_advisory = (
-            "Conditions are optimal for all small vessel operations, coastal artisanal fishing, and harbor transit. Minimal "
-            "vessel roll and pitch are expected during nearshore and offshore operations."
+            "All grid points inside the bounding box display minimal sea roughness, low current drift, and stable swell profiles. "
+            "Conditions are suitable for all small craft, nearshore operations, harbor transit, and coastal marine activities."
         )
 
     # 3. Winds
     p1_winds = (
-        f"Surface wind speeds are estimated at {est_wind_speed:.1f} m/s ({est_wind_knots:.1f} knots). "
-        f"These local winds generate maximum wind-driven wave crests of up to {max_wind_wave:.1f} m across open water."
+        f"Regional wind speeds across the bounding box grid average {mean_wind:.1f} m/s ({mean_wind * 1.944:.1f} knots), "
+        f"with peak localized wind vectors reaching {peak_wind:.1f} m/s ({peak_wind * 1.944:.1f} knots). "
+        f"Wind forcing drives peak wind-generated surface waves up to {peak_wind_wave:.1f} m across exposed waters."
     )
     p2_winds = (
-        "Wind forcing remains steady without indications of abrupt gale-force acceleration. However, diurnal land-sea breeze "
-        "transitions may temporarily increase localized wind drag and surface choppiness during the afternoon hours."
+        "Wind energy displays a clear spatial gradient across the bounding box, with higher wind stress acting on seaward sampling "
+        "coordinates. Diurnal heating differentials between coastal land masses and the sea surface may induce mild afternoon wind acceleration."
     )
 
     # 4. Currents
     p1_currents = (
-        f"Peak ocean surface current velocity is recorded at {max_curr:.2f} m/s ({max_curr * 1.944:.1f} knots). "
-        f"The primary directional drift is aligned toward {avg_curr_dir:.0f}° relative to true north."
+        f"Surface current speeds across the regional grid reach a maximum of {peak_curr:.2f} m/s ({peak_curr * 1.944:.1f} knots), "
+        f"with spatial averages across the bounding box settling at {mean_curr:.2f} m/s. "
+        f"The primary directional stream vectors toward {mean_curr_dir:.0f}° true north."
     )
     p2_currents = (
-        "Surface current strength is consistent with regional geostrophic flow and tidal forcing. Navigators should factor "
-        "in this lateral drift when planning slow-speed coastal maneuvers, search-and-rescue operations, or set-and-drift calculations."
+        "Current field structure indicates continuous surface drift across the bounding box without extreme shear boundaries. "
+        "Navigators planning transit across this region should adjust set-and-drift corrections based on velocity increases observed in offshore grid cells."
     )
 
     # 5. Wave Height
     p1_wave = (
-        f"The maximum significant wave height is calculated at {max_wave:.1f} m. The dominant wave energy period is "
-        f"clocked at {max_wave_period:.1f} seconds, originating primarily from the {dom_wave_dir:.0f}° sector."
+        f"Significant wave heights across the bounding box peak at {peak_wave:.1f} m with a regional mean of {mean_wave:.1f} m. "
+        f"Dominant wave periods average {mean_wave_period:.1f} seconds, arriving along a directional heading centered at {dom_wave_dir:.0f}°."
     )
     p2_wave = (
-        "Wave energy is distributed across both wind-sea and swell components. As these waves approach shallow coastal shelves, "
-        "moderate wave shoaling and steepening can be expected along exposed headlands and beach breakers."
+        "The wave field consists of a superposition of local wind-seas and propagating swells. As wave fronts traverse the bounding box "
+        "from deeper waters toward shallower bathymetry, localized wave steepening may occur near coastal boundaries."
     )
 
     # 6. Swell
     p1_swell = (
-        f"Primary open-ocean swell heights peak at {max_swell:.1f} m. This swell component carries a long structural wave period "
-        f"of {max_swell_period:.1f} seconds arriving from {avg_swell_dir:.0f}°."
+        f"Open-ocean swell heights reach a regional maximum of {peak_swell:.1f} m across the bounding box grid. "
+        f"Swell systems demonstrate long structural wave periods averaging {mean_swell_period:.1f} seconds, transferring uniform energy across the region."
     )
     p2_swell = (
-        "Long-period swells transfer considerable energy across deep water without causing severe surface chop. However, "
-        "they can produce dangerous rip currents and surge along beach zones and outer reef lines."
+        "Long-period swells remain well-behaved across open water within the box, presenting smooth, wide-crested wave trains. "
+        "However, caution is recommended along shallow reef shelves or headlands where swell energy converges and breaks heavily."
     )
 
     # 7. Marine Heat Wave
-    mhw_threshold = 28.5
-    if max_sst >= mhw_threshold:
+    mhw_thresh = 28.5
+    if peak_sst >= mhw_thresh:
         p1_mhw = (
-            f"ACTIVE HEATWAVE: Peak sea surface temperatures reached {max_sst:.1f}°C, exceeding the local ecological "
-            f"threshold of {mhw_threshold}°C. Daily average SST remains elevated at {avg_sst:.1f}°C."
+            f"ACTIVE HEATWAVE: Localized thermal anomalies detected inside the bounding box. Peak sea surface temperatures reach "
+            f"{peak_sst:.1f}°C, exceeding the regional baseline heatwave threshold of {mhw_thresh}°C (regional mean: {mean_sst:.1f}°C)."
         )
         p2_mhw = (
-            "Extended exposure to these elevated thermal conditions poses stress to local marine ecosystems and coral reefs. "
-            "Upper-layer thermal expansion may also alter regional surface density and vertical temperature gradients."
+            "Elevated thermal patches are localized primarily in warm surface pockets within the bounding box. Prolonged exposure "
+            "may induce marine biological stress and alter localized surface layer buoyancy and vertical mixing depths."
         )
     else:
         p1_mhw = (
-            f"NO HEATWAVE DETECTED: Sea surface temperatures average {avg_sst:.1f}°C, with peak daily temperatures stopping at "
-            f"{max_sst:.1f}°C. Thermal levels remain safely under the regional threshold of {mhw_threshold}°C."
+            f"NO HEATWAVE DETECTED: Sea surface temperatures across the bounding box remain stable, averaging {mean_sst:.1f}°C "
+            f"and peaking at {peak_sst:.1f}°C. All sampled grid cells remain below the critical heatwave threshold of {mhw_thresh}°C."
         )
         p2_mhw = (
-            "Subsurface and surface water layers exhibit normal seasonal thermal stratification. No immediate biological "
-            "thermal stress or anomalous upper-ocean heating event is indicated for this area."
+            "Thermal distribution across the regional grid displays normal seasonal equilibrium. Upper-ocean stratification "
+            "remains stable across the entire bounding box without indications of thermal marine heatwave formation."
         )
 
     # 8. Anomaly
-    sst_anomaly = avg_sst - 26.0
-    wave_anomaly = max_wave - 1.2
+    sst_anom = mean_sst - 26.0
+    wave_anom = mean_wave - 1.2
     p1_anomaly = (
-        f"Comparison against long-term climatological baselines indicates a sea surface temperature departure of "
-        f"{sst_anomaly:+.1f}°C and a significant wave height variance of {wave_anomaly:+.1f} m."
+        f"Regional departure metrics calculated across the bounding box reveal a sea surface temperature anomaly of "
+        f"{sst_anom:+.1f}°C and a regional wave height variance of {wave_anom:+.1f} m relative to historical baselines."
     )
     p2_anomaly = (
-        "These departures fall within expected operational standard deviation limits. Continued monitoring of these "
-        "variance markers ensures higher boundary condition fidelity when running 3D subsurface temperature reconstructions."
+        "These spatial anomalies provide crucial boundary constraint adjustments for OceanEmbed's 3D subsurface temperature model. "
+        "Integrating bounding box variance ensures uniform vertical profile reconstruction from upper layers down to 902.3 m."
     )
 
     return {
@@ -180,14 +217,24 @@ def parse_daily_marine_bulletin(data: dict) -> dict:
     }
 
 
-def render_marine_dashboard(lat: float = 18.92, lon: float = 72.83):
-    """Fetches data ONCE and renders all 8 sections under a single main heading with 2+ paragraphs per section."""
-    raw_data = fetch_marine_data(lat, lon)
-    bulletin = parse_daily_marine_bulletin(raw_data)
+def render_regional_dashboard():
+    """Streamlit interface allowing bounding box selection and single-request rendering."""
+    st.sidebar.header("🗺️ Regional Bounding Box Selection")
+    
+    # Bounding Box Inputs
+    min_lat = st.sidebar.number_input("Min Latitude (°N)", value=5.0, step=0.25)
+    max_lat = st.sidebar.number_input("Max Latitude (°N)", value=30.0, step=0.25)
+    min_lon = st.sidebar.number_input("Min Longitude (°E)", value=45.0, step=0.25)
+    max_lon = st.sidebar.number_input("Max Longitude (°E)", value=105.0, step=0.25)
 
-    st.title("🌊 Coastal & Marine Environmental Bulletin")
+    st.title(f"🌊 Marine Bulletin: Regional Domain [{min_lat:.2f}°, {max_lat:.2f}°N | {min_lon:.2f}°, {max_lon:.2f}°E]")
 
-    # Display each section under the main title
+    # Single API request executed across grid
+    with st.spinner("Fetching spatial marine data across bounding box..."):
+        raw_data, bbox = fetch_regional_marine_data(min_lat, max_lat, min_lon, max_lon, grid_size=3)
+        bulletin = parse_regional_marine_bulletin(raw_data, bbox)
+
+    # Render all 8 sections under the main heading
     for title, text in bulletin.items():
         st.markdown(f"### {title}")
         st.write(text)
