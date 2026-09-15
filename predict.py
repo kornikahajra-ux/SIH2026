@@ -3,7 +3,8 @@ OceanEmbed Operational Inference Engine.
 Generates 3D subsurface ocean temperature profiles from 2D surface input NetCDF files.
 
 Usage:
-    python predict.py --input data/processed/surface_inputs_test.nc --output predictions.nc
+    python predict.py
+    python predict.py --input data/processed/surface_inputs_test.nc --output predicted_subsurface_temp.nc
 """
 
 import argparse
@@ -16,8 +17,16 @@ import xarray as xr
 import torch
 from scipy.interpolate import interp1d
 
-from model import OceanUNet
+from model import (
+    build_thermocline_model,
+    build_remaining_depths_model,
+    assemble_full_depth_profile,
+)
 from config import PROCESSED_DIR, NATIVE_DEPTHS_35, INCOIS_STANDARD_DEPTHS_M
+
+BASE_DIR = Path(__file__).parent
+DEFAULT_THERMO_CHECKPOINT = BASE_DIR / "checkpoints" / "best_ocean_unet_thermocline.pth"
+DEFAULT_REMAINING_CHECKPOINT = BASE_DIR / "checkpoints" / "best_ocean_unet_remaining.pth"
 
 
 def get_coord(ds: xr.Dataset, possible_names: list):
@@ -25,10 +34,14 @@ def get_coord(ds: xr.Dataset, possible_names: list):
     for name in possible_names:
         if name in ds.coords or name in ds.data_vars:
             return ds[name].values
-    raise KeyError(f"None of {possible_names} found in dataset keys: {list(ds.keys()) + list(ds.coords)}")
+    raise KeyError(
+        f"None of {possible_names} found in dataset keys: {list(ds.keys()) + list(ds.coords)}"
+    )
 
 
-def extract_channel_array(ds: xr.Dataset, var_name: str, target_shape: tuple) -> np.ndarray:
+def extract_channel_array(
+    ds: xr.Dataset, var_name: str, target_shape: tuple
+) -> np.ndarray:
     """Extracts a variable DataArray and transposes/coerces it strictly to target_shape (n_times, n_lats, n_lons)."""
     n_times, n_lats, n_lons = target_shape
 
@@ -36,9 +49,18 @@ def extract_channel_array(ds: xr.Dataset, var_name: str, target_shape: tuple) ->
         return np.zeros((n_times, n_lats, n_lons), dtype=np.float32)
 
     da = ds[var_name].squeeze()
-    time_dim = next((d for d in da.dims if "time" in str(d).lower() or str(d).lower() == "t"), None)
-    lat_dim = next((d for d in da.dims if "lat" in str(d).lower() or str(d).lower() == "y"), None)
-    lon_dim = next((d for d in da.dims if "lon" in str(d).lower() or str(d).lower() == "x"), None)
+    time_dim = next(
+        (d for d in da.dims if "time" in str(d).lower() or str(d).lower() == "t"),
+        None,
+    )
+    lat_dim = next(
+        (d for d in da.dims if "lat" in str(d).lower() or str(d).lower() == "y"),
+        None,
+    )
+    lon_dim = next(
+        (d for d in da.dims if "lon" in str(d).lower() or str(d).lower() == "x"),
+        None,
+    )
 
     if time_dim is None:
         da = da.expand_dims("time")
@@ -64,22 +86,50 @@ def extract_channel_array(ds: xr.Dataset, var_name: str, target_shape: tuple) ->
     return arr.astype(np.float32)
 
 
-def run_inference(input_path: str, output_path: str, checkpoint_path: str = "checkpoints/best_ocean_unet.pth", target_depth_mode: str = "incois"):
+def run_inference(
+    input_path: str,
+    output_path: str,
+    thermo_checkpoint_path: str = None,
+    remaining_checkpoint_path: str = None,
+    target_depth_mode: str = "incois",
+):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"[+] Using device for inference: {device}")
 
-    ckpt_file = Path(checkpoint_path)
-    if not ckpt_file.exists():
-        raise FileNotFoundError(f"Checkpoint not found at {ckpt_file}")
+    thermo_file = Path(thermo_checkpoint_path) if thermo_checkpoint_path else DEFAULT_THERMO_CHECKPOINT
+    remaining_file = Path(remaining_checkpoint_path) if remaining_checkpoint_path else DEFAULT_REMAINING_CHECKPOINT
 
-    checkpoint = torch.load(ckpt_file, map_location=device, weights_only=False)
-    model = OceanUNet(in_channels=12, out_channels=35).to(device)
-    model.load_state_dict(checkpoint["model_state_dict"])
-    model.eval()
+    if not thermo_file.is_absolute():
+        thermo_file = BASE_DIR / thermo_file
+    if not remaining_file.is_absolute():
+        remaining_file = BASE_DIR / remaining_file
 
-    stats = checkpoint.get("stats", {})
+    if not thermo_file.exists():
+        raise FileNotFoundError(f"Thermocline checkpoint not found at {thermo_file}")
+    if not remaining_file.exists():
+        raise FileNotFoundError(f"Remaining depths checkpoint not found at {remaining_file}")
+
+    print(f"[+] Loading thermocline checkpoint: {thermo_file.name}")
+    ckpt_thermo = torch.load(thermo_file, map_location=device, weights_only=False)
+
+    print(f"[+] Loading remaining-depths checkpoint: {remaining_file.name}")
+    ckpt_remaining = torch.load(remaining_file, map_location=device, weights_only=False)
+
+    model_thermo = build_thermocline_model().to(device)
+    model_remaining = build_remaining_depths_model().to(device)
+
+    model_thermo.load_state_dict(ckpt_thermo["model_state_dict"])
+    model_remaining.load_state_dict(ckpt_remaining["model_state_dict"])
+
+    model_thermo.eval()
+    model_remaining.eval()
+
+    stats = ckpt_thermo.get("stats", {})
 
     input_file = Path(input_path)
+    if not input_file.is_absolute():
+        input_file = BASE_DIR / input_file
+
     if not input_file.exists():
         raise FileNotFoundError(f"Input file not found at {input_file}")
 
@@ -88,15 +138,31 @@ def run_inference(input_path: str, output_path: str, checkpoint_path: str = "che
 
     lats = get_coord(ds_in, ["lat", "latitude", "LATITUDE", "y"])
     lons = get_coord(ds_in, ["lon", "longitude", "LONGITUDE", "x"])
-    times = ds_in["time"].values if "time" in ds_in else np.array([np.datetime64("now")])
+    times = (
+        ds_in["time"].values
+        if "time" in ds_in
+        else np.array([np.datetime64("now")])
+    )
 
     target_shape = (len(times), len(lats), len(lons))
     feature_vars = [
-        "analysed_sst", "sos", "sla", "adt", "u", "v",
-        "ug", "vg", "uwnd", "vwnd", "ws", "nobs"
+        "analysed_sst",
+        "sos",
+        "sla",
+        "adt",
+        "u",
+        "v",
+        "ug",
+        "vg",
+        "uwnd",
+        "vwnd",
+        "ws",
+        "nobs",
     ]
 
-    tensor_channels = [extract_channel_array(ds_in, var, target_shape) for var in feature_vars]
+    tensor_channels = [
+        extract_channel_array(ds_in, var, target_shape) for var in feature_vars
+    ]
     input_array = np.stack(tensor_channels, axis=1)
 
     if "input_mean" in stats and "input_std" in stats:
@@ -114,16 +180,25 @@ def run_inference(input_path: str, output_path: str, checkpoint_path: str = "che
 
     inputs_tensor = torch.from_numpy(input_array).float().to(device)
     with torch.no_grad():
-        preds_35 = model(inputs_tensor).cpu().numpy()
+        pred_thermo = model_thermo(inputs_tensor)
+        pred_remaining = model_remaining(inputs_tensor)
+        preds_35_tensor = assemble_full_depth_profile(pred_thermo, pred_remaining)
+        preds_35 = preds_35_tensor.cpu().numpy()
 
     if "target_mean" in stats and "target_std" in stats:
         t_mean = np.array(stats["target_mean"]).reshape(1, -1, 1, 1)
         t_std = np.array(stats["target_std"]).reshape(1, -1, 1, 1)
         preds_35 = preds_35 * t_std + t_mean
 
-    # Interpolate to INCOIS PS #01 Standard 15 Depths or output native 35
+    # Interpolate to INCOIS 15 Standard Depths or native 35
     if target_depth_mode == "incois":
-        interp_func = interp1d(NATIVE_DEPTHS_35, preds_35, axis=1, bounds_error=False, fill_value="extrapolate")
+        interp_func = interp1d(
+            NATIVE_DEPTHS_35,
+            preds_35,
+            axis=1,
+            bounds_error=False,
+            fill_value="extrapolate",
+        )
         final_preds = interp_func(INCOIS_STANDARD_DEPTHS_M)
         final_depths = INCOIS_STANDARD_DEPTHS_M
     else:
@@ -138,35 +213,77 @@ def run_inference(input_path: str, output_path: str, checkpoint_path: str = "che
                 {
                     "long_name": "Reconstructed Subsurface Ocean Temperature",
                     "units": "degrees_C",
-                    "standard_name": "sea_water_potential_temperature"
-                }
+                    "standard_name": "sea_water_potential_temperature",
+                },
             )
         },
         coords={
             "time": times,
-            "depth": ("depth", final_depths, {"units": "m", "positive": "down"}),
+            "depth": (
+                "depth",
+                final_depths,
+                {"units": "m", "positive": "down"},
+            ),
             "lat": ("lat", lats, {"units": "degrees_north"}),
             "lon": ("lon", lons, {"units": "degrees_east"}),
         },
         attrs={
             "title": "OceanEmbed 3D Ocean Temperature Reconstructions",
             "institution": "INCOIS / SIH 2026",
-            "source": "OceanUNet Deep Learning Model",
-            "resolution": "0.25 degree spatial"
-        }
+            "source": "OceanUNet Dual Submodel Deep Learning Engine",
+            "resolution": "0.25 degree spatial",
+        },
     )
 
     out_file = Path(output_path)
+    if not out_file.is_absolute():
+        out_file = BASE_DIR / out_file
+
     out_ds.to_netcdf(out_file)
     print(f"[+] Output successfully saved to: {out_file.resolve()}")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="OceanEmbed 3D Temperature Prediction Engine")
-    parser.add_argument("--input", type=str, default=str(PROCESSED_DIR / "surface_inputs_test.nc"), help="Input NetCDF path")
-    parser.add_argument("--output", type=str, default="predicted_subsurface_temp.nc", help="Output NetCDF path")
-    parser.add_argument("--checkpoint", type=str, default="checkpoints/best_ocean_unet.pth", help="Model checkpoint path")
-    parser.add_argument("--mode", type=str, choices=["incois", "native"], default="incois", help="Target depth levels output format")
+    parser = argparse.ArgumentParser(
+        description="OceanEmbed 3D Temperature Prediction Engine"
+    )
+    parser.add_argument(
+        "--input",
+        type=str,
+        default=str(PROCESSED_DIR / "surface_inputs_test.nc"),
+        help="Input NetCDF path",
+    )
+    parser.add_argument(
+        "--output",
+        type=str,
+        default="predicted_subsurface_temp.nc",
+        help="Output NetCDF path",
+    )
+    parser.add_argument(
+        "--thermocline_checkpoint",
+        type=str,
+        default=str(DEFAULT_THERMO_CHECKPOINT),
+        help="Thermocline submodel checkpoint path",
+    )
+    parser.add_argument(
+        "--remaining_checkpoint",
+        type=str,
+        default=str(DEFAULT_REMAINING_CHECKPOINT),
+        help="Remaining-depths submodel checkpoint path",
+    )
+    parser.add_argument(
+        "--mode",
+        type=str,
+        choices=["incois", "native"],
+        default="incois",
+        help="Target depth levels output format",
+    )
 
     args = parser.parse_args()
-    run_inference(args.input, args.output, args.checkpoint, args.mode)
+    run_inference(
+        args.input,
+        args.output,
+        args.thermocline_checkpoint,
+        args.remaining_checkpoint,
+        args.mode,
+    )
